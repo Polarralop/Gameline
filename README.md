@@ -98,4 +98,4 @@ The UI is Qt, so it runs on macOS, Windows and Linux. Game detection is plug-in 
 
 - **macOS:** built and tested. The process detector finds Steam and Epic games by install path, plus any app you tag in Preferences.
 - **Windows and Linux:** the app and data folder work. Steam's `RunningAppID` registry detector and Epic manifest detection for Windows are future work, as is a Windows version of the Claude Code login button.
-- **Steam `registry.vdf` on macOS** has no `RunningAppID` while idle (checked 2026-10-16); still to verify while a game is running. Install paths already identify Steam games.
+- **Steam `registry.vdf` on macOS never records the running game.** Checked 2026-10-17 with Slay the Spire 2 running: the file has no `RunningAppID` and wasn't even written to. (On Windows the same key lives in the real registry.) So on macOS, Steam games are recognised by their install path under `steamapps/common/`, which works for every Steam game in the default library.

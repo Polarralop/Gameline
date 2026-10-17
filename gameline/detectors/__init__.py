@@ -1,7 +1,7 @@
 """Detector plug-ins and a helper that merges their results.
 
 Add a new detector by subclassing GameDetector and listing it in
-default_detectors(). Planned: steam_macos (registry.vdf), epic manifests,
+default_detectors(). Planned: epic manifests,
 and Windows registry/manifest detectors (written but untested).
 """
 

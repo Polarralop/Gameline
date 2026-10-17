@@ -1,8 +1,9 @@
 """Detector plug-ins and a helper that merges their results.
 
 Add a new detector by subclassing GameDetector and listing it in
-default_detectors(). Planned: epic manifests,
-and Windows registry/manifest detectors (written but untested).
+default_detectors(). Not written yet: Windows detectors (Steam's
+RunningAppID registry key, Epic manifests). On macOS, Steam's registry.vdf
+never records the running game, so install paths are used instead.
 """
 
 from __future__ import annotations

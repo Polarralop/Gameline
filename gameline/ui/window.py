@@ -14,6 +14,7 @@ from datetime import datetime
 
 from PySide6.QtCore import (
     QDateTime,
+    QEvent,
     QEasingCurve,
     QObject,
     QParallelAnimationGroup,
@@ -24,15 +25,15 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
+from PySide6.QtGui import QColor, QKeySequence, QPainter, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateTimeEdit,
-    QDialog,
-    QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -107,17 +108,40 @@ class Job(QRunnable):
         self.signals.done.emit(result)
 
 
-# --- add / edit dialog -------------------------------------------------------
+# --- add / edit modal --------------------------------------------------------
 
 
-class DeadlineDialog(QDialog):
-    def __init__(self, parent: QWidget, now: datetime, deadline: Deadline | None = None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Edit deadline" if deadline else "Add deadline")
-        self.setMinimumWidth(420)
+class DeadlineModal(QWidget):
+    """In-window modal: dims the window and shows the deadline form on a card.
+
+    It is a child widget laid over the whole window, not a separate window.
+    on_save(title, due, notes) runs when the user saves; Esc or a click on
+    the dimmed area cancels.
+    """
+
+    def __init__(
+        self,
+        host: QWidget,
+        now: datetime,
+        on_save: Callable[[str, datetime, str], None],
+        deadline: Deadline | None = None,
+    ) -> None:
+        super().__init__(host)
+        self.on_save = on_save
+        self.setGeometry(host.rect())
+        host.installEventFilter(self)  # follow the window when it resizes
+
+        self.card = QFrame(self)
+        self.card.setObjectName("modal")
+        self.card.setFixedWidth(480)
+        lay = QVBoxLayout(self.card)
+        lay.setContentsMargins(22, 20, 22, 18)
+        lay.setSpacing(10)
+        lay.addWidget(label("Edit deadline" if deadline else "Add deadline", name="modalTitle"))
 
         self.title = QLineEdit(deadline.title if deadline else "")
         self.title.setPlaceholderText("CSCA48 Assignment 2")
+        self.title.returnPressed.connect(self._save)
         self.due = QDateTimeEdit(to_qdt(deadline.due if deadline else now.replace(hour=23, minute=59)))
         self.due.setCalendarPopup(True)
         self.due.setDisplayFormat("ddd MMM d, h:mm AP")
@@ -129,24 +153,68 @@ class DeadlineDialog(QDialog):
         form.addRow("Title", self.title)
         form.addRow("Due", self.due)
         form.addRow("Details", self.notes)
+        lay.addLayout(form)
+        lay.addWidget(label("Gameline will ask the AI to estimate effort and plan work blocks.", muted=True, wrap=True))
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(self._accept)
-        buttons.rejected.connect(self.reject)
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        cancel = QPushButton("Cancel")
+        cancel.setProperty("ghost", True)
+        cancel.clicked.connect(self.close_modal)
+        save = QPushButton("Save")
+        save.setDefault(True)
+        save.clicked.connect(self._save)
+        buttons.addWidget(cancel)
+        buttons.addWidget(save)
+        lay.addLayout(buttons)
 
-        layout = QVBoxLayout(self)
-        layout.addLayout(form)
-        layout.addWidget(label("Gameline will ask the AI to estimate effort and plan work blocks.", muted=True, wrap=True))
-        layout.addWidget(buttons)
+        QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.close_modal)
+        self._center_card()
 
-    def _accept(self) -> None:
-        if not self.title.text().strip():
-            self.title.setFocus()
-            return
-        self.accept()
+        # Fade in.
+        self.effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self.effect)
+        self.fade = QPropertyAnimation(self.effect, b"opacity", self)
+        self.fade.setDuration(140)
+        self.fade.setStartValue(0.0)
+        self.fade.setEndValue(1.0)
+        self.show()
+        self.raise_()
+        self.fade.start()
+        self.title.setFocus()
+
+    def _center_card(self) -> None:
+        self.card.adjustSize()
+        self.card.move((self.width() - self.card.width()) // 2, max(40, (self.height() - self.card.height()) // 2 - 30))
+
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() == QEvent.Type.Resize:
+            self.setGeometry(obj.rect())
+            self._center_card()
+        return False
+
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.fillRect(self.rect(), QColor(0, 0, 0, 110))
+
+    def mousePressEvent(self, event) -> None:
+        if not self.card.geometry().contains(event.position().toPoint()):
+            self.close_modal()
 
     def values(self) -> tuple[str, datetime, str]:
         return self.title.text(), from_qdt(self.due.dateTime()), self.notes.toPlainText()
+
+    def _save(self) -> None:
+        if not self.title.text().strip():
+            self.title.setFocus()
+            return
+        values = self.values()
+        self.close_modal()
+        self.on_save(*values)
+
+    def close_modal(self) -> None:
+        self.parent().removeEventFilter(self)
+        self.deleteLater()
 
 
 # --- deadline card -----------------------------------------------------------
@@ -478,17 +546,17 @@ class MainWindow(QMainWindow):
         if errors:
             QMessageBox.warning(self, "Gameline", "\n".join(errors))
 
-    def add_deadline(self) -> None:
-        dlg = DeadlineDialog(self, self.ctx.clock.now())
-        if dlg.exec():
-            title, due, notes = dlg.values()
+    def add_deadline(self) -> DeadlineModal:
+        def save(title: str, due: datetime, notes: str) -> None:
             self._run_estimate(lambda: self.ctx.add_deadline(title, due, notes))
 
-    def edit_deadline(self, d: Deadline) -> None:
-        dlg = DeadlineDialog(self, self.ctx.clock.now(), d)
-        if dlg.exec():
-            title, due, notes = dlg.values()
+        return DeadlineModal(self.centralWidget(), self.ctx.clock.now(), save)
+
+    def edit_deadline(self, d: Deadline) -> DeadlineModal:
+        def save(title: str, due: datetime, notes: str) -> None:
             self._run_estimate(lambda: self.ctx.edit_deadline(d.id, title, due, notes))
+
+        return DeadlineModal(self.centralWidget(), self.ctx.clock.now(), save, d)
 
     def delete_deadline(self, d: Deadline) -> None:
         if QMessageBox.question(self, "Delete deadline", f"Delete “{d.title}”?") == QMessageBox.StandardButton.Yes:

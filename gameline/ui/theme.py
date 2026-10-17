@@ -40,6 +40,8 @@ def stylesheet() -> str:
     QPushButton[ghost="true"] {{ background: transparent; color: {c['muted']}; border: 1px solid {c['line']}; padding: 4px 10px; font-weight: 500; }}
     QLineEdit, QPlainTextEdit, QDateTimeEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
         background: {c['card']}; border: 1px solid {c['line']}; border-radius: 8px; padding: 5px 8px; }}
+    QFrame#modal {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 14px; }}
+    QLabel#modalTitle {{ font-size: 18px; font-weight: 700; }}
     QFrame#sidebar {{ background: {c['side']}; border-right: 1px solid {c['line']}; }}
     QLabel#brand {{ font-size: 16px; font-weight: 700; padding-left: 4px; }}
     QPushButton#navToggle {{ background: transparent; color: {c['muted']}; font-size: 18px; padding: 4px 10px; }}

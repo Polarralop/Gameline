@@ -8,7 +8,7 @@ QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
 from gameline.context import AppContext  # noqa: E402
 from gameline.store import Store  # noqa: E402
-from gameline.ui.window import DeadlineDialog, MainWindow  # noqa: E402
+from gameline.ui.window import DeadlineModal, MainWindow  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -16,13 +16,23 @@ def qapp():
     return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 
-def test_dialog_round_trips_datetime(qapp):
-    win = QtWidgets.QWidget()
-    due = datetime(2026, 10, 20, 23, 59)
-    dlg = DeadlineDialog(win, datetime(2026, 10, 17, 12, 0))
-    dlg.title.setText("A2")
-    dlg.due.setDateTime(dlg.due.dateTime().fromString("2026-10-20T23:59", "yyyy-MM-ddTHH:mm"))
-    assert dlg.values()[1] == due
+def test_modal_saves_values_and_closes(qapp):
+    host = QtWidgets.QWidget()
+    host.resize(1000, 600)
+    saved = []
+    modal = DeadlineModal(host, datetime(2026, 10, 17, 12, 0), lambda *v: saved.append(v))
+    assert modal.parent() is host and not modal.isWindow()  # in-window, not a new window
+    modal.title.setText("A2")
+    modal.due.setDateTime(modal.due.dateTime().fromString("2026-10-20T23:59", "yyyy-MM-ddTHH:mm"))
+    modal._save()
+    assert saved == [("A2", datetime(2026, 10, 20, 23, 59), "")]
+
+
+def test_modal_requires_title(qapp):
+    host = QtWidgets.QWidget()
+    saved = []
+    DeadlineModal(host, datetime(2026, 10, 17), lambda *v: saved.append(v))._save()
+    assert saved == []
 
 
 def test_window_renders_seeded_week(qapp, tmp_path):

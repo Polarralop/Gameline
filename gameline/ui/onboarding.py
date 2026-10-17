@@ -3,14 +3,14 @@ nudge to add deadlines. Shown once (State.onboarded); the Demo page can
 replay it.
 
 Pages: 0 welcome · 1 how you work · 2 what you play · 3 how hard to nudge ·
-4 all set. The three dots track pages 1-3.
+4 which AI estimates · 5 all set. The four dots track pages 1-4.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QDoubleSpinBox,
@@ -23,8 +23,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..llm import BACKENDS
+from ..llm.claude_cli import AccountStatus, account_status, cached_status, forget_status, open_login_terminal
 from ..models import NotifyLevel, Style, WorkingStyle
-from .window import ICONS_DIR, ConfirmModal, GameList, Modal, label
+from .window import ICONS_DIR, ConfirmModal, GameList, Job, Modal, label, styled_combo
+
+QUIZ_PAGES = 4  # pages 1-4 are questions, with a dot each
+DONE = QUIZ_PAGES + 1
 
 STYLES = [Style.SHORT_BURSTS, Style.MIXED, Style.LONG_SESSIONS]
 STYLE_NAMES = ["Short bursts", "Mixed", "Long sessions"]
@@ -127,7 +132,7 @@ class OnboardingModal(Modal):
         self.interrupt_ok = False
 
         self.pages = Pages()
-        for build in (self._welcome, self._work, self._play, self._nudge, self._done):
+        for build in (self._welcome, self._work, self._play, self._nudge, self._ai, self._done):
             self.pages.addWidget(build())
         self.body.addWidget(self.pages)
 
@@ -139,7 +144,7 @@ class OnboardingModal(Modal):
         foot.addWidget(self.back_btn)
         foot.addStretch(1)
         self.dots = []
-        for _ in range(3):
+        for _ in range(QUIZ_PAGES):
             dot = QLabel()
             dot.setObjectName("dot")
             dot.setFixedSize(8, 8)
@@ -164,7 +169,7 @@ class OnboardingModal(Modal):
             super().keyPressEvent(event)
 
     def close_modal(self) -> None:
-        if self.pages.currentIndex() in (0, 4) or getattr(self, "_finishing", False):
+        if self.pages.currentIndex() in (0, DONE) or getattr(self, "_finishing", False):
             super().close_modal()
 
     # --- pages -------------------------------------------------------------
@@ -262,6 +267,104 @@ class OnboardingModal(Modal):
         self._level_changed(self.level_idx)
         return page
 
+    def _ai(self) -> QWidget:
+        page, lay = self._page("Who should plan your deadlines?",
+                               "Gameline asks an AI to estimate each deadline and split it into work blocks.")
+        self.ai_box = styled_combo()
+        for key, text in BACKENDS.items():
+            self.ai_box.addItem(text, key)
+        self.ai_box.setFixedHeight(36)
+        self.ai_box.setCurrentIndex(max(0, self.ai_box.findData(self.ctx.backend_name())))
+        self.ai_box.currentIndexChanged.connect(self._ai_changed)
+        lay.addWidget(self.ai_box)
+        self.ai_hint = label("", muted=True, wrap=True)
+        lay.addWidget(self.ai_hint)
+
+        # Claude subscription only: log in right here, like in Preferences.
+        self.login_row = QWidget()
+        lr = QHBoxLayout(self.login_row)
+        lr.setContentsMargins(0, 4, 0, 0)
+        lr.setSpacing(12)
+        self.login_btn = QPushButton("Log in with Claude")
+        self.login_btn.setObjectName("claudeAccount")
+        self.login_btn.setFixedHeight(36)
+        self.login_btn.clicked.connect(self._login)
+        lr.addWidget(self.login_btn)
+        self.login_status = label("", muted=True, wrap=True)
+        lr.addWidget(self.login_status, 1)
+        lay.addWidget(self.login_row)
+
+        self.claude: AccountStatus | None = None
+        self.skip_login_ok = False
+        self._checking = False
+        self.login_timer = QTimer(self)
+        self.login_timer.setInterval(6000)
+        self.login_timer.timeout.connect(lambda: self._check_claude(force=True))
+        self._ai_changed()
+        return page
+
+    def _ai_changed(self) -> None:
+        key = self.ai_box.currentData()
+        self.ai_hint.setText({
+            "gemini": "Uses the Gemini API key from your .env file.",
+            "claude": "Uses the Claude API key from your .env file.",
+            "claude-cli": "Uses your Claude subscription through Claude Code on this Mac. Just log in below.",
+            "stub": "No AI: rough guesses from the deadline's title. Works offline.",
+        }.get(key, ""))
+        self.login_row.setVisible(key == "claude-cli")
+        self.skip_login_ok = False
+        if key == "claude-cli" and hasattr(self, "pages") and self.pages.currentIndex() == QUIZ_PAGES:
+            self._check_claude()
+        if hasattr(self, "footer"):
+            self._fit()
+
+    def _check_claude(self, force: bool = False) -> None:
+        if not force:
+            cached = cached_status()
+            if cached is not None:
+                self._show_login(cached)
+                return
+        if self._checking:
+            return
+        self._checking = True
+        if not self.login_timer.isActive():
+            self.login_btn.setText("Checking Claude…")
+            self.login_btn.setEnabled(False)
+        self.window_.pool.start(Job(account_status, self._claude_checked))
+
+    def _claude_checked(self, status) -> None:
+        self._checking = False
+        if isinstance(status, AccountStatus):
+            self._show_login(status)
+            if status.ok:
+                self.login_timer.stop()
+
+    def _show_login(self, status: AccountStatus) -> None:
+        self.claude = status
+        ok = status.ok
+        if not status.installed:
+            text, tone, enabled, note = "Claude Code not installed", "idle", False, \
+                "Install Claude Code, or pick another option."
+        elif ok:
+            text, tone, enabled = "✓  Logged in to Claude", "ok", False
+            note = status.email + (f" · {status.plan.title()}" if status.plan else "")
+        elif self.login_timer.isActive():
+            text, tone, enabled, note = "Waiting for login…", "idle", False, "Finish logging in in your browser."
+        else:
+            text, tone, enabled, note = "Log in with Claude", "action", True, "Not logged in yet."
+        self.login_btn.setText(text)
+        self.login_btn.setEnabled(enabled)
+        self.login_btn.setProperty("tone", tone)
+        self.login_btn.style().unpolish(self.login_btn)
+        self.login_btn.style().polish(self.login_btn)
+        self.login_status.setText(note)
+
+    def _login(self) -> None:
+        forget_status()
+        open_login_terminal()
+        self.login_timer.start()
+        self._show_login(AccountStatus(installed=True))
+
     def _done(self) -> QWidget:
         page = QWidget()
         lay = QVBoxLayout(page)
@@ -330,16 +433,18 @@ class OnboardingModal(Modal):
         self._center_card()
 
     def go(self, index: int) -> None:
-        index = max(0, min(4, index))
+        index = max(0, min(DONE, index))
         self.pages.setCurrentIndex(index)
-        quiz = 1 <= index <= 3
+        quiz = 1 <= index <= QUIZ_PAGES
         self.footer.setVisible(quiz)
         for i, dot in enumerate(self.dots):
             dot.setProperty("current", i == index - 1)
             dot.style().unpolish(dot)
             dot.style().polish(dot)
         self.back_btn.setVisible(quiz)
-        self.next_btn.setText("Finish" if index == 3 else "Next")
+        self.next_btn.setText("Finish" if index == QUIZ_PAGES else "Next")
+        if index == QUIZ_PAGES and self.ai_box.currentData() == "claude-cli":
+            self._check_claude()  # only look at the login once this page is on screen
         self._fit()
 
     def next(self) -> None:
@@ -356,8 +461,26 @@ class OnboardingModal(Modal):
                     self._accept_interrupt,
                 )
                 return
+        if index == QUIZ_PAGES:
+            if self.ai_box.currentData() == "claude-cli" and not (self.claude and self.claude.ok) \
+                    and not self.skip_login_ok:
+                ConfirmModal(
+                    self.parent(),
+                    "Continue without logging in?",
+                    "Claude subscription estimates only work once Claude Code on this Mac is logged in. "
+                    "Until then, new deadlines won't get estimates. You can log in later in Preferences.",
+                    "Estimates will fail until you log in.",
+                    "Continue anyway",
+                    self._accept_no_login,
+                )
+                return
             self._save()
         self.go(index + 1)
+
+    def _accept_no_login(self) -> None:
+        self.skip_login_ok = True
+        self.raise_()
+        self.next()
 
     def _accept_interrupt(self) -> None:
         self.interrupt_ok = True
@@ -365,6 +488,7 @@ class OnboardingModal(Modal):
         self.next()
 
     def _save(self) -> None:
+        self.ctx.set_backend(self.ai_box.currentData())
         self.ctx.finish_onboarding(WorkingStyle(
             style=STYLES[self.style_idx],
             daily_work_hours=self.hours.value(),

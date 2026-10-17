@@ -338,7 +338,15 @@ def test_onboarding_flow(qapp, tmp_path):
     m.next_btn.click()
     assert m.pages.currentIndex() == 3  # waits for the warning to be accepted
     w.centralWidget().findChildren(ConfirmModal)[-1].confirm_btn.click()
-    assert m.pages.currentIndex() == 4
+    assert m.pages.currentIndex() == 4  # which AI
+    m._check_claude = lambda force=False: None  # don't run the real CLI
+    m.ai_box.setCurrentIndex(m.ai_box.findData("claude-cli"))
+    assert m.login_row.isVisibleTo(m)
+    m.next_btn.click()
+    assert m.pages.currentIndex() == 4  # not logged in: asks first
+    w.centralWidget().findChildren(ConfirmModal)[-1].confirm_btn.click()
+    assert m.pages.currentIndex() == 5
+    assert ctx.store.load().llm_backend == "claude-cli"
     s = ctx.store.load()
     assert s.onboarded and s.tagged_games == ["Minecraft"]
     ws = s.working_style

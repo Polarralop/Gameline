@@ -368,6 +368,12 @@ class Toaster(QObject):
 # --- deadline card -----------------------------------------------------------
 
 
+def _repolish(w: QWidget) -> None:
+    """Re-apply the stylesheet after changing a property it selects on."""
+    w.style().unpolish(w)
+    w.style().polish(w)
+
+
 class TaskRow(QWidget):
     """Checkbox, wrapping task title, and hours/time on the right. Clicking the
     title toggles the box too."""
@@ -378,18 +384,12 @@ class TaskRow(QWidget):
         row.setContentsMargins(0, 3, 0, 3)
         row.setSpacing(10)
         self.box = QCheckBox()
-        self.box.setChecked(chunk.done)
-        self.box.toggled.connect(on_toggle)
         self.box.setCursor(Qt.CursorShape.PointingHandCursor)
         row.addWidget(self.box, 0, Qt.AlignmentFlag.AlignTop)
 
         self.title = QLabel(chunk.title)
         self.title.setObjectName("task")
         self.title.setWordWrap(True)
-        self.title.setProperty("done", chunk.done)
-        font = self.title.font()
-        font.setStrikeOut(chunk.done)
-        self.title.setFont(font)
         self.title.setCursor(Qt.CursorShape.PointingHandCursor)
         self.title.mousePressEvent = lambda e: self.box.toggle()
         row.addWidget(self.title, 1)
@@ -402,13 +402,33 @@ class TaskRow(QWidget):
         when.setContentsMargins(0, 2, 0, 0)  # line up with the larger title text
         row.addWidget(when, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
 
+        self.set_done(chunk.done)
+        self.box.toggled.connect(self.set_done)
+        self.box.toggled.connect(on_toggle)
+
+    def set_done(self, done: bool) -> None:
+        self.box.blockSignals(True)
+        self.box.setChecked(done)
+        self.box.blockSignals(False)
+        if self.title.property("done") == done:
+            return
+        self.title.setProperty("done", done)
+        font = self.title.font()
+        font.setStrikeOut(done)
+        self.title.setFont(font)
+        _repolish(self.title)
 
 
 class DeadlineCard(QFrame):
+    """One deadline. Built once; ticks, collapsing and the clock moving update
+    the existing widgets in place (update()), so nothing gets rebuilt or flashes."""
+
     def __init__(self, window: MainWindow, s: DeadlineStatus) -> None:
         super().__init__()
         self.setObjectName("card")
+        self.window_ = window
         d = s.deadline
+        self.did = d.id
         lay = QVBoxLayout(self)
         lay.setContentsMargins(16, 14, 16, 14)
         lay.setSpacing(6)
@@ -417,93 +437,130 @@ class DeadlineCard(QFrame):
         left = QVBoxLayout()
         left.setSpacing(2)
         left.addWidget(label(d.title, name="title"))
-        meta = f"Due {fmt_dt(d.due)}"
-        if d.estimate:
-            meta += f" · importance {d.estimate.importance}/5"
-        left.addWidget(label(meta, muted=True))
+        self.meta = label("", muted=True)
+        left.addWidget(self.meta)
         top.addLayout(left, 1)
         pending = d.id in window.pending
-        estimated = d.estimate is not None and not d.needs_estimate
+        self.estimated = d.estimate is not None and not d.needs_estimate
+        self.pill = self.arrow = self.bar = self.stats = self.summary = self.details = None
+        self.rows: list[TaskRow] = []
         if pending:
             thinking = QHBoxLayout()
             thinking.setSpacing(6)
             thinking.addWidget(Spinner())
             thinking.addWidget(label("Estimating…", muted=True))
             top.addLayout(thinking)
-        elif not estimated:
+        elif not self.estimated:
             top.addWidget(pill("Not estimated", "idle"), 0, Qt.AlignmentFlag.AlignTop)
         else:
-            top.addWidget(pill("At risk" if s.at_risk else "On track", "risk" if s.at_risk else "ok"), 0, Qt.AlignmentFlag.AlignTop)
-            expanded = d.id not in window.collapsed
-            arrow = QToolButton()
-            arrow.setObjectName("collapse")
-            arrow.setIcon(QIcon(icon_path("chevron-down" if expanded else "chevron-right", colors()["muted"])))
-            arrow.setIconSize(QSize(14, 14))
-            arrow.setToolTip("Hide tasks" if expanded else "Show tasks")
-            arrow.setCursor(Qt.CursorShape.PointingHandCursor)
-            arrow.clicked.connect(lambda: window.toggle_collapsed(d.id))
-            top.addWidget(arrow, 0, Qt.AlignmentFlag.AlignTop)
+            self.pill = pill("", "ok")
+            top.addWidget(self.pill, 0, Qt.AlignmentFlag.AlignTop)
+            self.arrow = QToolButton()
+            self.arrow.setObjectName("collapse")
+            self.arrow.setIconSize(QSize(14, 14))
+            self.arrow.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.arrow.clicked.connect(lambda: window.toggle_collapsed(d.id))
+            top.addWidget(self.arrow, 0, Qt.AlignmentFlag.AlignTop)
         lay.addLayout(top)
 
-        if not estimated:
-            # Placeholder bar until the estimate lands; the whole card is greyed out.
-            bar = QProgressBar()
-            bar.setTextVisible(False)
-            bar.setValue(0)
-            lay.addWidget(bar)
+        self.bar = QProgressBar()
+        self.bar.setTextVisible(False)
+        self.bar.setRange(0, 100)
+        self.bar.setValue(0)
+        lay.addWidget(self.bar)
+
+        if not self.estimated:
+            # Placeholder until the estimate lands.
             if pending:
                 fx = QGraphicsOpacityEffect(self)
                 fx.setOpacity(0.55)
                 self.setGraphicsEffect(fx)
-                return
-            retry = QHBoxLayout()
-            retry.addWidget(label("The estimate didn't come back.", muted=True))
-            retry.addStretch(1)
-            for text, fn in (("Retry", lambda: window.start_estimate(d.id)),
-                             ("Edit", lambda: window.edit_deadline(d)),
-                             ("Delete", lambda: window.delete_deadline(d))):
-                b = QPushButton(text)
-                b.setProperty("ghost", True)
-                b.clicked.connect(fn)
-                retry.addWidget(b)
-            lay.addLayout(retry)
+            else:
+                retry = QHBoxLayout()
+                retry.addWidget(label("The estimate didn't come back.", muted=True))
+                retry.addStretch(1)
+                for text, fn in (("Retry", lambda: window.start_estimate(d.id)),
+                                 ("Edit", lambda: window.edit_deadline(d)),
+                                 ("Delete", lambda: window.delete_deadline(d))):
+                    retry.addWidget(self._ghost(text, fn))
+                lay.addLayout(retry)
+            self.update_status(s)
             return
 
-        if d.estimate:
-            bar = QProgressBar()
-            bar.setTextVisible(False)
-            bar.setRange(0, 100)
-            have = s.available_hours
-            bar.setValue(100 if have <= 0 else min(100, round(s.remaining_hours / have * 100)))
-            bar.setProperty("tone", "risk" if s.at_risk else "ok")
-            lay.addWidget(bar)
-            lay.addWidget(label(
-                f"{s.remaining_hours:.1f}h of work left · {have:.1f}h realistically available · "
-                f"slack {s.slack_hours:+.1f}h", muted=True))
-            chunks = d.estimate.chunks
-            if d.id in window.collapsed:
-                done = sum(c.done for c in chunks)
-                summary = label(f"{done} of {len(chunks)} tasks done", muted=True)  # shares the Edit/Delete row
-            else:
-                if d.estimate.rationale:
-                    lay.addWidget(label(d.estimate.rationale, muted=True, wrap=True))
-                tasks = QVBoxLayout()
-                tasks.setContentsMargins(0, 4, 0, 0)
-                tasks.setSpacing(2)
-                for i, c in enumerate(chunks):
-                    tasks.addWidget(TaskRow(c, lambda on, i=i, did=d.id: window.toggle_chunk(did, i, on)))
-                lay.addLayout(tasks)
+        self.stats = label("", muted=True)
+        lay.addWidget(self.stats)
+
+        # Rationale + task list live in one container that collapsing hides.
+        self.details = QWidget()
+        dl = QVBoxLayout(self.details)
+        dl.setContentsMargins(0, 0, 0, 0)
+        dl.setSpacing(6)
+        if d.estimate.rationale:
+            dl.addWidget(label(d.estimate.rationale, muted=True, wrap=True))
+        tasks = QVBoxLayout()
+        tasks.setContentsMargins(0, 4, 0, 0)
+        tasks.setSpacing(2)
+        for i, c in enumerate(d.estimate.chunks):
+            row = TaskRow(c, lambda on, i=i, did=d.id: window.toggle_chunk(did, i, on))
+            self.rows.append(row)
+            tasks.addWidget(row)
+        dl.addLayout(tasks)
+        lay.addWidget(self.details)
 
         actions = QHBoxLayout()
-        if d.id in window.collapsed and d.estimate:
-            actions.addWidget(summary)
+        self.summary = label("", muted=True)  # "2 of 8 tasks done", shown when collapsed
+        actions.addWidget(self.summary)
         actions.addStretch(1)
-        for text, fn in (("Edit", lambda: window.edit_deadline(d)), ("Delete", lambda: window.delete_deadline(d))):
-            b = QPushButton(text)
-            b.setProperty("ghost", True)
-            b.clicked.connect(fn)
-            actions.addWidget(b)
+        actions.addWidget(self._ghost("Edit", lambda: window.edit_deadline(d)))
+        actions.addWidget(self._ghost("Delete", lambda: window.delete_deadline(d)))
         lay.addLayout(actions)
+        self.update_status(s)
+
+    @staticmethod
+    def _ghost(text: str, fn: Callable[[], object]) -> QPushButton:
+        b = QPushButton(text)
+        b.setProperty("ghost", True)
+        b.clicked.connect(fn)
+        return b
+
+    def update_status(self, s: DeadlineStatus) -> None:
+        d = s.deadline
+        meta = f"Due {fmt_dt(d.due)}"
+        if d.estimate and self.estimated:
+            meta += f" · importance {d.estimate.importance}/5"
+        self.meta.setText(meta)
+        if not self.estimated:
+            return
+
+        tone = "risk" if s.at_risk else "ok"
+        self.pill.setText("At risk" if s.at_risk else "On track")
+        if self.pill.property("pill") != tone:
+            self.pill.setProperty("pill", tone)
+            _repolish(self.pill)
+        have = s.available_hours
+        self.bar.setValue(100 if have <= 0 else min(100, round(s.remaining_hours / have * 100)))
+        if self.bar.property("tone") != tone:
+            self.bar.setProperty("tone", tone)
+            _repolish(self.bar)
+        self.stats.setText(
+            f"{s.remaining_hours:.1f}h of work left · {have:.1f}h realistically available · "
+            f"slack {s.slack_hours:+.1f}h")
+        for row, c in zip(self.rows, d.estimate.chunks):
+            row.set_done(c.done)
+        self.set_collapsed(d.id in self.window_.collapsed, d)
+
+    def set_collapsed(self, collapsed: bool, d: Deadline | None = None) -> None:
+        if self.details is None:
+            return
+        done = sum(r.box.isChecked() for r in self.rows)
+        if getattr(self, "_shown", None) == (collapsed, done):
+            return  # nothing changed; skip so the clock tick doesn't repaint
+        self._shown = (collapsed, done)
+        self.details.setVisible(not collapsed)
+        self.summary.setVisible(collapsed)
+        self.summary.setText(f"{done} of {len(self.rows)} tasks done")
+        self.arrow.setIcon(QIcon(icon_path("chevron-right" if collapsed else "chevron-down", colors()["muted"])))
+        self.arrow.setToolTip("Show tasks" if collapsed else "Hide tasks")
 
 
 # --- sidebar -----------------------------------------------------------------
@@ -813,22 +870,34 @@ class MainWindow(QMainWindow):
         self.speed_btn.setText("Back to real time" if self.ctx.demo_mode else "Speed up time (6 min/s)")
         self.game_btn.setText("Quit fake game" if self.ctx.fake_game_running else "Launch fake game")
 
-        # Rebuild cards only when something visible changed.
-        sig = self._cards_signature(now)
+        state = self.ctx.store.load()
+        sig = self._cards_signature(state)
         if force or sig != self._signature:
             self._signature = sig
             self._rebuild_cards(now)
+        else:
+            for d in state.deadlines:
+                card = self.card_widgets.get(d.id)
+                if card:
+                    card.update_status(assess(d, state.working_style, now))
 
     @staticmethod
     def _set_tone(widget: QWidget, tone: str) -> None:
+        if widget.property("pill") == tone:
+            return  # repolishing every tick would repaint for nothing
         widget.setProperty("pill", tone)
         widget.style().unpolish(widget)
         widget.style().polish(widget)
 
-    def _cards_signature(self, now: datetime):
-        path = self.ctx.store.path
-        mtime = path.stat().st_mtime if path.exists() else 0
-        return (mtime, now.strftime("%Y%m%d%H%M"), frozenset(self.pending))
+    def _cards_signature(self, state) -> tuple:
+        """What forces a rebuild: which deadlines exist and their shape. Ticks,
+        collapsing and the clock moving are applied in place instead."""
+        return tuple(
+            (d.id, d.fingerprint(), d.estimate is not None and not d.needs_estimate,
+             len(d.estimate.chunks) if d.estimate else 0, d.estimate.rationale if d.estimate else "",
+             d.id in self.pending)
+            for d in sorted(state.deadlines, key=lambda d: d.due)
+        )
 
     def _rebuild_cards(self, now: datetime) -> None:
         # Paint once at the end instead of after every removed and added card.
@@ -837,28 +906,6 @@ class MainWindow(QMainWindow):
             self._fill_cards(now)
         finally:
             self.cards_host.setUpdatesEnabled(True)
-
-    def replace_card(self, did: str) -> None:
-        """Rebuild just one card in place (after a tick or collapse), so the
-        rest of the list doesn't redraw."""
-        old = self.card_widgets.get(did)
-        state = self.ctx.store.load()
-        d = state.get(did)
-        if old is None or d is None:
-            self.refresh(force=True)
-            return
-        now = self.ctx.clock.now()
-        self.cards_host.setUpdatesEnabled(False)
-        try:
-            new = DeadlineCard(self, assess(d, state.working_style, now))
-            self.cards.replaceWidget(old, new)
-            old.hide()
-            old.deleteLater()
-            self.card_widgets[did] = new
-        finally:
-            self.cards_host.setUpdatesEnabled(True)
-        self._signature = self._cards_signature(now)  # so the timer doesn't rebuild everything
-        self.refresh()  # header pill and clock only
 
     def _fill_cards(self, now: datetime) -> None:
         self.card_widgets = {}
@@ -941,12 +988,13 @@ class MainWindow(QMainWindow):
 
     def toggle_collapsed(self, did: str) -> None:
         self.collapsed.symmetric_difference_update({did})
-        QTimer.singleShot(0, lambda: self.replace_card(did))
+        card = self.card_widgets.get(did)
+        if card:
+            card.set_collapsed(did in self.collapsed)
 
     def toggle_chunk(self, did: str, index: int, done: bool) -> None:
         self.ctx.set_chunk_done(did, index, done)
-        # Defer so the checkbox that fired this isn't deleted mid-signal.
-        QTimer.singleShot(0, lambda: self.replace_card(did))
+        self.refresh()  # updates this card's bar, stats and pill in place
 
     def _load_settings(self) -> None:
         state = self.ctx.store.load()

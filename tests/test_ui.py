@@ -125,9 +125,12 @@ def test_collapse_arrow_hides_tasks(qapp, tmp_path):
         return next(w.cards.itemAt(i).widget() for i in range(w.cards.count())
                     if isinstance(w.cards.itemAt(i).widget(), DeadlineCard))
 
-    assert first_card().findChildren(TaskRow)
-    others = [c for k, c in w.card_widgets.items() if k != did]
+    before = dict(w.card_widgets)
+    card = first_card()
+    assert card.details.isVisibleTo(card)
     w.toggle_collapsed(did)
-    w.replace_card(did)
-    assert not first_card().findChildren(TaskRow)
-    assert [c for k, c in w.card_widgets.items() if k != did] == others  # other cards untouched
+    assert not card.details.isVisibleTo(card) and card.summary.text() == "0 of 3 tasks done"
+    rows = card.findChildren(TaskRow)
+    rows[0].box.click()  # tick a task: saved, and updated without rebuilding any card
+    assert ctx.store.load().get(did).estimate.chunks[0].done
+    assert w.card_widgets == before

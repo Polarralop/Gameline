@@ -186,10 +186,13 @@ def stylesheet() -> str:
     QLabel#dot[current="true"] {{ background: {c['accent']}; }}
     QLabel#stop {{ color: {c['muted']}; font-size: 13px; }}
     QLabel#stop[current="true"] {{ color: {c['ink']}; font-weight: 600; }}
+    QSlider#stepSlider {{ min-height: 28px; }}
     QSlider#stepSlider::groove:horizontal {{ height: 6px; background: {c['line']}; border-radius: 3px; }}
     QSlider#stepSlider::sub-page:horizontal {{ background: {c['accent']}; border-radius: 3px; }}
-    QSlider#stepSlider::handle:horizontal {{ background: white; border: 2px solid {c['accent']};
-        width: 18px; height: 18px; margin: -8px 0; border-radius: 11px; }}
+    /* Apple-style pill knob: wider than tall, sized to fit inside the slider's height. */
+    QSlider#stepSlider::handle:horizontal {{ background: #ffffff; border: 1px solid {c['line']};
+        width: 34px; height: 20px; margin: -7px 0; border-radius: 10px; }}
+    QSlider#stepSlider::handle:horizontal:hover {{ border-color: {c['accent']}; }}
     QPushButton#linkButton {{ background: transparent; color: {c['muted']}; font-weight: 500; padding: 4px 8px; }}
     QPushButton#linkButton:hover {{ color: {c['ink']}; }}
     QPushButton#secondary {{ background: transparent; color: {c['accent']}; border: 1px solid {c['accent']}; }}

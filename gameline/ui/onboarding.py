@@ -246,6 +246,7 @@ class OnboardingModal(Modal):
                             "like Minecraft or League of Legends.", muted=True, wrap=True))
         self.games = GameList(self._add_game, self._remove_game)
         self.games.setFixedWidth(472)
+        self.games.on_resize = lambda: self._fit()
         self.games.set_games(self.ctx.store.load().tagged_games)
         lay.addWidget(self.games)
         return page

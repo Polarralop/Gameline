@@ -930,6 +930,7 @@ class GameList(QWidget):
     def __init__(self, on_add: Callable[[str], bool], on_remove: Callable[[str], None]) -> None:
         super().__init__()
         self.on_add, self.on_remove = on_add, on_remove
+        self.on_resize: Callable[[], None] | None = None  # e.g. a modal re-fitting itself
         self.expanded = True
         self.setFixedWidth(self.WIDTH)
         lay = QVBoxLayout(self)
@@ -971,6 +972,9 @@ class GameList(QWidget):
         for name in games:
             item = QFrame()
             item.setObjectName("gameItem")
+            # Fixed row height: the list's size is known straight away, even
+            # before the new rows are styled, so its container can grow to fit.
+            item.setFixedHeight(32)
             h = QHBoxLayout(item)
             h.setContentsMargins(10, 4, 4, 4)
             h.addWidget(QLabel(name), 1)
@@ -986,6 +990,12 @@ class GameList(QWidget):
         self.toggle.setVisible(n > 0)
         self._count = n
         self._apply()
+        # New rows only count towards the layout once shown (next event-loop pass),
+        # so set the list's height from the row count instead of asking the layout.
+        m = self.rows.contentsMargins()
+        self.list.setFixedHeight(n * 32 + m.top() + m.bottom())
+        self.layout().activate()
+        self.adjustSize()
 
     def _apply(self) -> None:
         n = getattr(self, "_count", 0)
@@ -996,6 +1006,8 @@ class GameList(QWidget):
     def _toggle(self) -> None:
         self.expanded = not self.expanded
         self._apply()
+        if self.on_resize:
+            self.on_resize()
 
     def _add(self) -> None:
         if self.on_add(self.input.text()):

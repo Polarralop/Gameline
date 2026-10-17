@@ -1430,9 +1430,19 @@ class MainWindow(QMainWindow):
             for d in sorted(state.deadlines, key=lambda d: d.due)
         )
 
+    def _freeze(self, frozen: bool) -> None:
+        """Pause painting for the whole window while cards move, so no
+        half-arranged frame (e.g. the gap a hidden card leaves) ever shows.
+        Nested calls are counted; painting resumes when the outermost ends."""
+        self._freeze_depth = getattr(self, "_freeze_depth", 0) + (1 if frozen else -1)
+        if frozen and self._freeze_depth == 1:
+            self.setUpdatesEnabled(False)
+        elif not frozen and self._freeze_depth == 0:
+            self.setUpdatesEnabled(True)
+
     def _rebuild_cards(self, now: datetime) -> None:
         """Recreate every card (deadlines added, deleted or re-estimated)."""
-        self.cards_host.setUpdatesEnabled(False)  # paint once at the end
+        self._freeze(True)  # paint once at the end
         try:
             for card in self.card_widgets.values():
                 self.cards.removeWidget(card)
@@ -1444,7 +1454,7 @@ class MainWindow(QMainWindow):
             }
             self._arrange_cards(state)
         finally:
-            self.cards_host.setUpdatesEnabled(True)
+            self._freeze(False)
 
     def replace_card(self, did: str) -> None:
         """Recreate one card (it was completed or reopened) and re-place it."""
@@ -1454,7 +1464,7 @@ class MainWindow(QMainWindow):
         if d is None or old is None:
             self.refresh(force=True)
             return
-        self.cards_host.setUpdatesEnabled(False)
+        self._freeze(True)
         try:
             self.cards.removeWidget(old)
             old.hide()
@@ -1462,14 +1472,14 @@ class MainWindow(QMainWindow):
             self.card_widgets[did] = DeadlineCard(self, assess(d, state.working_style, self.ctx.clock.now()))
             self._arrange_cards(state)
         finally:
-            self.cards_host.setUpdatesEnabled(True)
+            self._freeze(False)
         self._signature = self._cards_signature(state)  # so the timer doesn't rebuild everything
 
     def _arrange_cards(self, state=None) -> None:
         """Order, group and show/hide the existing cards for the current view.
         Cards are only moved, never recreated, so changing the view doesn't flash."""
         state = state or self.ctx.store.load()
-        self.cards_host.setUpdatesEnabled(False)
+        self._freeze(True)
         try:
             # Take everything out of the layout. Cards, subject headers and the
             # empty-state note are all kept and reused, so nothing gets recreated.
@@ -1478,16 +1488,14 @@ class MainWindow(QMainWindow):
                 self._empty_note = label("", muted=True)
             while self.cards.count():
                 self.cards.takeAt(0)
-            for header in self._headers.values():
-                header.hide()
-            self._empty_note.hide()
+            used_headers = set()
 
             hidden = 0 if state.show_completed else sum(d.completed for d in state.deadlines)
             shown = [d for d in state.deadlines if (state.show_completed or not d.completed) and d.id in self.card_widgets]
             shown.sort(key=lambda d: (d.completed, d.due))  # open first by due date, completed after
             for d in state.deadlines:
                 card = self.card_widgets.get(d.id)
-                if card is not None:
+                if card is not None and card.isVisibleTo(self.cards_host) != (d in shown):
                     card.setVisible(d in shown)
             if not shown:
                 text = "No deadlines yet. Add one, or load the sample week from the Demo tab."
@@ -1495,7 +1503,7 @@ class MainWindow(QMainWindow):
                     text = f"All caught up. {hidden} completed deadline{'s are' if hidden != 1 else ' is'} hidden."
                 self._empty_note.setText(text)
                 self.cards.addWidget(self._empty_note)
-                self._empty_note.show()
+            self._empty_note.setVisible(not shown)
 
             if state.view_sort == "subject":
                 groups: dict[str, list[Deadline]] = {}
@@ -1509,16 +1517,20 @@ class MainWindow(QMainWindow):
                         header = self._headers[subject] = label(subject.upper(), name="h2")
                     header.setContentsMargins(2, 8 if i else 0, 0, 0)
                     self.cards.addWidget(header)
-                    header.show()
+                    used_headers.add(subject)
                     for d in groups[subject]:
                         self.cards.addWidget(self.card_widgets[d.id])
             else:
                 for d in shown:
                     self.cards.addWidget(self.card_widgets[d.id])
+            # Only touch visibility where it actually changes.
+            for subject, header in self._headers.items():
+                if header.isVisibleTo(self.cards_host) != (subject in used_headers):
+                    header.setVisible(subject in used_headers)
             # Hidden (completed) cards stay parented but out of the layout.
             self.cards.addStretch(1)
         finally:
-            self.cards_host.setUpdatesEnabled(True)
+            self._freeze(False)
 
     # actions
 

@@ -153,7 +153,7 @@ def test_interrupt_level_needs_confirmation(qapp, tmp_path):
     w.centralWidget().findChildren(ConfirmModal)[-1].confirm_btn.click()
     assert ctx.store.load().working_style.notify_level == NotifyLevel.INTERRUPT
     box.setCurrentIndex(box.findData(NotifyLevel.OFF))
-    assert not w.max_minutes.isEnabled()
+    assert not w.max_minutes.isEnabled() and not w.repeat_minutes.isEnabled()
 
 
 def test_game_list_add_and_remove(qapp, tmp_path):

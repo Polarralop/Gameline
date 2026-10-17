@@ -81,3 +81,17 @@ def test_interrupt_level_only_interrupts_long_sessions(tmp_path):
     clock.advance(hours=2)
     r.on_tick([s], clock.now())
     assert len(sent) == 2 and interrupts == ["Time for a break from Factorio?"]
+
+
+def test_repeat_interval_is_configurable(tmp_path):
+    r, clock, sent = setup(tmp_path, [], max_minutes=60)
+    st = r.store.load(); st.working_style.repeat_minutes = 15; r.store.save(st)
+    s = Session(DetectedGame("Factorio", "x"), NOW)
+    clock.advance(minutes=61)
+    r.on_tick([s], clock.now())
+    clock.advance(minutes=14)
+    r.on_tick([s], clock.now())
+    assert len(sent) == 1
+    clock.advance(minutes=2)
+    r.on_tick([s], clock.now())
+    assert len(sent) == 2

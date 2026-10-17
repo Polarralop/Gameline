@@ -31,6 +31,8 @@ class WorkingStyle:
     daily_work_hours: float = 4.0
     # Gaming session length after which a long-session alert fires.
     max_gaming_minutes: int = 120
+    # After the limit, the break alert repeats this often while you keep playing.
+    repeat_minutes: int = 60
     notify_level: NotifyLevel = NotifyLevel.NORMAL
 
     def to_dict(self) -> dict:
@@ -43,6 +45,7 @@ class WorkingStyle:
             style=Style(d.get("style", Style.MIXED.value)),
             daily_work_hours=float(d.get("daily_work_hours", 4.0)),
             max_gaming_minutes=int(d.get("max_gaming_minutes", 120)),
+            repeat_minutes=int(d.get("repeat_minutes", 60)),
             notify_level=NotifyLevel(d.get("notify_level", NotifyLevel.NORMAL.value)),
         )
 

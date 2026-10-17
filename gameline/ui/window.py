@@ -61,8 +61,8 @@ from .theme import colors, icon_path
 
 NOTIFY_LABELS = {
     NotifyLevel.OFF: "No notifications",
-    NotifyLevel.NORMAL: "Notifications",
-    NotifyLevel.INTERRUPT: "Interrupting notifications",
+    NotifyLevel.NORMAL: "Standard",
+    NotifyLevel.INTERRUPT: "Interrupting",
 }
 
 STYLE_LABELS = {Style.SHORT_BURSTS: "Short bursts", Style.MIXED: "Mixed", Style.LONG_SESSIONS: "Long sessions"}
@@ -930,6 +930,10 @@ class MainWindow(QMainWindow):
         self.max_minutes.setRange(15, 600)
         self.max_minutes.setSingleStep(15)
         self.max_minutes.setSuffix(" min")
+        self.repeat_minutes = QSpinBox()
+        self.repeat_minutes.setRange(5, 240)
+        self.repeat_minutes.setSingleStep(5)
+        self.repeat_minutes.setSuffix(" min")
         save = QPushButton("Save settings")
         save.clicked.connect(self.save_settings)
 
@@ -938,6 +942,7 @@ class MainWindow(QMainWindow):
         form.addRow("Work hours per day", self.daily_hours)
         form.addRow("Notifications", self.notify_box)
         form.addRow("Gaming session limit", self.max_minutes)
+        form.addRow("Repeat break alert every", self.repeat_minutes)
         form.addRow("", save)
 
         form.addRow(QLabel(""))
@@ -965,10 +970,10 @@ class MainWindow(QMainWindow):
         form.addRow("", self.claude_status)
 
         # One consistent size for every field and button on the page.
-        for w in (self.style_box, self.daily_hours, self.notify_box, self.max_minutes, save,
+        for w in (self.style_box, self.daily_hours, self.notify_box, self.max_minutes, self.repeat_minutes, save,
                   self.backend_box, self.claude_btn):
             w.setFixedSize(320, 36)
-        for spin in (self.daily_hours, self.max_minutes):
+        for spin in (self.daily_hours, self.max_minutes, self.repeat_minutes):
             spin.lineEdit().setTextMargins(10, 0, 10, 0)  # spin boxes ignore stylesheet padding
         # Labels as tall as the fields, so they line up with the field text.
         for row in range(form.rowCount()):
@@ -1156,11 +1161,13 @@ class MainWindow(QMainWindow):
         self.style_box.setCurrentIndex(self.style_box.findData(ws.style))
         self.daily_hours.setValue(ws.daily_work_hours)
         self.max_minutes.setValue(ws.max_gaming_minutes)
+        self.repeat_minutes.setValue(ws.repeat_minutes)
         self.notify_box.blockSignals(True)
         self.notify_box.setCurrentIndex(self.notify_box.findData(ws.notify_level))
         self.notify_box.blockSignals(False)
         self._notify_level = ws.notify_level
-        self.max_minutes.setEnabled(ws.notify_level != NotifyLevel.OFF)
+        for w in (self.max_minutes, self.repeat_minutes):
+            w.setEnabled(ws.notify_level != NotifyLevel.OFF)
         self.game_list.set_games(state.tagged_games)
         self.backend_box.blockSignals(True)
         self.backend_box.setCurrentIndex(max(0, self.backend_box.findData(self.ctx.backend_name())))
@@ -1171,6 +1178,7 @@ class MainWindow(QMainWindow):
             style=Style(self.style_box.currentData()),
             daily_work_hours=self.daily_hours.value(),
             max_gaming_minutes=self.max_minutes.value(),
+            repeat_minutes=self.repeat_minutes.value(),
         )
         self.ctx.save_settings(style)
         self.toast("Settings saved", "ok")
@@ -1202,7 +1210,8 @@ class MainWindow(QMainWindow):
     def _apply_notify(self, level: NotifyLevel) -> None:
         self._notify_level = level
         self.ctx.set_notify_level(level)
-        self.max_minutes.setEnabled(level != NotifyLevel.OFF)
+        for w in (self.max_minutes, self.repeat_minutes):
+            w.setEnabled(level != NotifyLevel.OFF)
         self.toast(f"Notifications: {NOTIFY_LABELS[level]}", "ok")
 
     def _add_game(self, name: str) -> bool:

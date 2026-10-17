@@ -2,7 +2,7 @@
 
 Launch reminder: only when at least one deadline is at risk; silent otherwise.
 Long-session alert: fires at the user's limit, earlier when prep work is due
-soon, then repeats every REPEAT_MINUTES so it never nags continuously.
+soon, then repeats every repeat_minutes (a Preferences setting) so it never nags continuously.
 """
 
 from __future__ import annotations
@@ -20,7 +20,6 @@ from .watcher import Listener, Session
 
 log = logging.getLogger(__name__)
 
-REPEAT_MINUTES = 60
 MIN_LIMIT_MINUTES = 30
 # Prep hours due in the next 48h at which the session limit is halved.
 HEAVY_PREP_HOURS = 8.0
@@ -103,7 +102,7 @@ class Reminders(Listener):
             if played < limit:
                 continue
             last = self._last_alert.get(s.game.key)
-            if last and now - last < timedelta(minutes=REPEAT_MINUTES):
+            if last and now - last < timedelta(minutes=state.working_style.repeat_minutes):
                 continue
             self._last_alert[s.game.key] = now
             hours = played.total_seconds() / 3600

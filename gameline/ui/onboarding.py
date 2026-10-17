@@ -244,9 +244,8 @@ class OnboardingModal(Modal):
         lay.addWidget(QLabel("Play anything that isn't on Steam or Epic?"))
         lay.addWidget(label("Steam and Epic games are found automatically. Add anything else you play, "
                             "like Minecraft or League of Legends.", muted=True, wrap=True))
-        self.games = GameList(self._add_game, self._remove_game)
+        self.games = GameList(self._add_game, self._remove_game, collapsible=False)
         self.games.setFixedWidth(472)
-        self.games.on_resize = lambda: self._fit()
         self.games.set_games(self.ctx.store.load().tagged_games)
         lay.addWidget(self.games)
         return page
@@ -315,13 +314,11 @@ class OnboardingModal(Modal):
         if not name.strip() or not self.ctx.add_tagged_game(name):
             return False
         self.games.set_games(self.ctx.store.load().tagged_games)
-        self._fit()
         return True
 
     def _remove_game(self, name: str) -> None:
         self.ctx.remove_tagged_game(name)
         self.games.set_games(self.ctx.store.load().tagged_games)
-        self._fit()
 
     def _fit(self) -> None:
         """Size the card to the current page only (a stack is as tall as its

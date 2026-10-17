@@ -922,16 +922,23 @@ class DeadlineCard(QFrame):
 
 
 class GameList(QWidget):
-    """Type an app name and press Enter (or Add) to tag it as a game. The
-    collapsible list below shows tagged apps, each with a ✕ to remove it."""
+    """Type an app name and press Enter (or Add) to tag it as a game. Tagged
+    apps show in a fixed-height, scrollable list with a ✕ each, so the widget
+    never changes size as games come and go. In Preferences the list can be
+    collapsed; onboarding passes collapsible=False."""
 
     WIDTH = 320
+    ROW = 36
+    VISIBLE_ROWS = 3
 
-    def __init__(self, on_add: Callable[[str], bool], on_remove: Callable[[str], None]) -> None:
+    def __init__(self, on_add: Callable[[str], bool], on_remove: Callable[[str], None],
+                 collapsible: bool = True) -> None:
         super().__init__()
         self.on_add, self.on_remove = on_add, on_remove
         self.on_resize: Callable[[], None] | None = None  # e.g. a modal re-fitting itself
+        self.collapsible = collapsible
         self.expanded = True
+        self._count = 0
         self.setFixedWidth(self.WIDTH)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -952,31 +959,47 @@ class GameList(QWidget):
 
         self.toggle = QPushButton()
         self.toggle.setObjectName("listToggle")
-        self.toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.toggle.clicked.connect(self._toggle)
+        if collapsible:
+            self.toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.toggle.clicked.connect(self._toggle)
         lay.addWidget(self.toggle, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.list = QFrame()
         self.list.setObjectName("gameList")
-        self.rows = QVBoxLayout(self.list)
-        self.rows.setContentsMargins(4, 4, 4, 4)
+        frame = QVBoxLayout(self.list)
+        frame.setContentsMargins(4, 4, 4, 4)
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setObjectName("proposalList")  # transparent background
+        self.scroll.viewport().setObjectName("proposalList")
+        inner = QWidget()
+        inner.setObjectName("proposalList")
+        self.rows = QVBoxLayout(inner)
+        self.rows.setContentsMargins(0, 0, 4, 0)
         self.rows.setSpacing(0)
+        self.scroll.setWidget(inner)
+        frame.addWidget(self.scroll)
+        # Same height whatever the count: up to three rows show, more scroll.
+        self.list.setFixedHeight(self.VISIBLE_ROWS * self.ROW + 8)
         lay.addWidget(self.list)
 
     def set_games(self, games: list[str]) -> None:
         while self.rows.count():
-            w = self.rows.takeAt(0).widget()
-            if w:
-                w.hide()
-                w.deleteLater()
+            item = self.rows.takeAt(0)
+            if item.widget():
+                item.widget().hide()
+                item.widget().deleteLater()
+        if not games:
+            empty = label("No extra games yet.", muted=True)
+            empty.setContentsMargins(10, 8, 0, 0)
+            self.rows.addWidget(empty)
         for name in games:
             item = QFrame()
             item.setObjectName("gameItem")
-            # Fixed row height: the list's size is known straight away, even
-            # before the new rows are styled, so its container can grow to fit.
-            item.setFixedHeight(32)
+            item.setFixedHeight(self.ROW)
             h = QHBoxLayout(item)
-            h.setContentsMargins(10, 4, 4, 4)
+            h.setContentsMargins(10, 0, 4, 0)
             h.addWidget(QLabel(name), 1)
             x = QToolButton()
             x.setObjectName("removeGame")
@@ -986,22 +1009,17 @@ class GameList(QWidget):
             x.clicked.connect(lambda _=False, n=name: self.on_remove(n))
             h.addWidget(x)
             self.rows.addWidget(item)
-        n = len(games)
-        self.toggle.setVisible(n > 0)
-        self._count = n
+        self.rows.addStretch(1)
+        self._count = len(games)
         self._apply()
-        # New rows only count towards the layout once shown (next event-loop pass),
-        # so set the list's height from the row count instead of asking the layout.
-        m = self.rows.contentsMargins()
-        self.list.setFixedHeight(n * 32 + m.top() + m.bottom())
-        self.layout().activate()
-        self.adjustSize()
 
     def _apply(self) -> None:
-        n = getattr(self, "_count", 0)
+        n = self._count
         noun = "app" if n == 1 else "apps"
-        self.toggle.setText(f"{'▾' if self.expanded else '▸'}  {n} {noun} tagged as games")
-        self.list.setVisible(self.expanded and n > 0)
+        arrow = ("▾  " if self.expanded else "▸  ") if self.collapsible else ""
+        self.toggle.setText(f"{arrow}{n} {noun} tagged as games")
+        self.toggle.setVisible(n > 0 or not self.collapsible)
+        self.list.setVisible(self.expanded or not self.collapsible)
 
     def _toggle(self) -> None:
         self.expanded = not self.expanded
@@ -1014,6 +1032,9 @@ class GameList(QWidget):
             self.input.clear()
             self.expanded = True
             self._apply()
+            # Scroll to the new game once the list has re-measured itself.
+            bar = self.scroll.verticalScrollBar()
+            QTimer.singleShot(0, lambda: bar.setValue(bar.maximum()))
 
 
 # --- sidebar -----------------------------------------------------------------

@@ -22,9 +22,10 @@ load_dotenv(data_dir() / ".env")
 
 
 BACKENDS = {
-    "gemini": "Gemini API key",
-    "claude": "Claude API key",
-    "claude-cli": "Claude subscription",
+    # Model names here must match the defaults in gemini.py, claude.py and claude_cli.py.
+    "gemini": "Gemini API key (Gemini 3.8 Flash)",
+    "claude": "Claude API key (Claude Sonnet 5.5)",
+    "claude-cli": "Claude subscription (Claude Opus 5.5)",
     "stub": "Offline (rough guesses)",
 }
 

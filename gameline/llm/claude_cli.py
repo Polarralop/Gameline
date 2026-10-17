@@ -79,7 +79,7 @@ def _ask(prompt: str, system: str, extra: list[str], timeout: float) -> dict[str
 
 
 class ClaudeCLILLM(EstimatorLLM):
-    def __init__(self, model: str = "opus", effort: str = "low", timeout: float = 120) -> None:
+    def __init__(self, model: str = "claude-opus-5-5", effort: str = "low", timeout: float = 120) -> None:
         self.model = model
         self.effort = effort
         self.timeout = timeout

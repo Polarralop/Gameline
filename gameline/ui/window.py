@@ -108,70 +108,49 @@ class Job(QRunnable):
         self.signals.done.emit(result)
 
 
-# --- add / edit modal --------------------------------------------------------
+# --- in-window modals --------------------------------------------------------
 
 
-class DeadlineModal(QWidget):
-    """In-window modal: dims the window and shows the deadline form on a card.
+class Modal(QWidget):
+    """Base in-window modal: dims the window and shows a card in the middle.
 
-    It is a child widget laid over the whole window, not a separate window.
-    on_save(title, due, notes) runs when the user saves; Esc or a click on
-    the dimmed area cancels.
+    It is a child widget laid over the host, not a separate window. Subclasses
+    fill self.body (the card's layout) and then call self.open(). Esc or a
+    click on the dimmed area cancels.
     """
 
-    def __init__(
-        self,
-        host: QWidget,
-        now: datetime,
-        on_save: Callable[[str, datetime, str], None],
-        deadline: Deadline | None = None,
-    ) -> None:
+    def __init__(self, host: QWidget, heading: str, width: int = 480) -> None:
         super().__init__(host)
-        self.on_save = on_save
         self.setGeometry(host.rect())
         host.installEventFilter(self)  # follow the window when it resizes
-
         self.card = QFrame(self)
         self.card.setObjectName("modal")
-        self.card.setFixedWidth(480)
-        lay = QVBoxLayout(self.card)
-        lay.setContentsMargins(22, 20, 22, 18)
-        lay.setSpacing(10)
-        lay.addWidget(label("Edit deadline" if deadline else "Add deadline", name="modalTitle"))
+        self.card.setFixedWidth(width)
+        self.body = QVBoxLayout(self.card)
+        self.body.setContentsMargins(22, 20, 22, 18)
+        self.body.setSpacing(10)
+        self.body.addWidget(label(heading, name="modalTitle"))
+        QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.close_modal)
 
-        self.title = QLineEdit(deadline.title if deadline else "")
-        self.title.setPlaceholderText("CSCA48 Assignment 2")
-        self.title.returnPressed.connect(self._save)
-        self.due = QDateTimeEdit(to_qdt(deadline.due if deadline else now.replace(hour=23, minute=59)))
-        self.due.setCalendarPopup(True)
-        self.due.setDisplayFormat("ddd MMM d, h:mm AP")
-        self.notes = QPlainTextEdit(deadline.notes if deadline else "")
-        self.notes.setPlaceholderText("Details help the estimate, e.g. 4 coding questions on linked lists")
-        self.notes.setFixedHeight(80)
-
-        form = QFormLayout()
-        form.addRow("Title", self.title)
-        form.addRow("Due", self.due)
-        form.addRow("Details", self.notes)
-        lay.addLayout(form)
-        lay.addWidget(label("Gameline will ask the AI to estimate effort and plan work blocks.", muted=True, wrap=True))
-
-        buttons = QHBoxLayout()
-        buttons.addStretch(1)
+    def add_buttons(self, confirm_text: str, on_confirm: Callable[[], None], danger: bool = False) -> QPushButton:
+        row = QHBoxLayout()
+        row.addStretch(1)
         cancel = QPushButton("Cancel")
         cancel.setProperty("ghost", True)
         cancel.clicked.connect(self.close_modal)
-        save = QPushButton("Save")
-        save.setDefault(True)
-        save.clicked.connect(self._save)
-        buttons.addWidget(cancel)
-        buttons.addWidget(save)
-        lay.addLayout(buttons)
+        confirm = QPushButton(confirm_text)
+        confirm.setDefault(True)
+        if danger:
+            confirm.setProperty("danger", True)
+        confirm.clicked.connect(on_confirm)
+        row.addWidget(cancel)
+        row.addWidget(confirm)
+        self.body.addSpacing(4)
+        self.body.addLayout(row)
+        return confirm
 
-        QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.close_modal)
+    def open(self, focus: QWidget | None = None) -> None:
         self._center_card()
-
-        # Fade in.
         self.effect = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(self.effect)
         self.fade = QPropertyAnimation(self.effect, b"opacity", self)
@@ -181,7 +160,7 @@ class DeadlineModal(QWidget):
         self.show()
         self.raise_()
         self.fade.start()
-        self.title.setFocus()
+        (focus or self).setFocus()
 
     def _center_card(self) -> None:
         self.card.adjustSize()
@@ -201,6 +180,43 @@ class DeadlineModal(QWidget):
         if not self.card.geometry().contains(event.position().toPoint()):
             self.close_modal()
 
+    def close_modal(self) -> None:
+        self.parent().removeEventFilter(self)
+        self.deleteLater()
+
+
+class DeadlineModal(Modal):
+    """Add or edit a deadline. on_save(title, due, notes) runs on Save."""
+
+    def __init__(
+        self,
+        host: QWidget,
+        now: datetime,
+        on_save: Callable[[str, datetime, str], None],
+        deadline: Deadline | None = None,
+    ) -> None:
+        super().__init__(host, "Edit deadline" if deadline else "Add deadline")
+        self.on_save = on_save
+
+        self.title = QLineEdit(deadline.title if deadline else "")
+        self.title.setPlaceholderText("CSCA48 Assignment 2")
+        self.title.returnPressed.connect(self._save)
+        self.due = QDateTimeEdit(to_qdt(deadline.due if deadline else now.replace(hour=23, minute=59)))
+        self.due.setCalendarPopup(True)
+        self.due.setDisplayFormat("ddd MMM d, h:mm AP")
+        self.notes = QPlainTextEdit(deadline.notes if deadline else "")
+        self.notes.setPlaceholderText("Details help the estimate, e.g. 4 coding questions on linked lists")
+        self.notes.setFixedHeight(80)
+
+        form = QFormLayout()
+        form.addRow("Title", self.title)
+        form.addRow("Due", self.due)
+        form.addRow("Details", self.notes)
+        self.body.addLayout(form)
+        self.body.addWidget(label("Gameline will ask the AI to estimate effort and plan work blocks.", muted=True, wrap=True))
+        self.add_buttons("Save", self._save)
+        self.open(focus=self.title)
+
     def values(self) -> tuple[str, datetime, str]:
         return self.title.text(), from_qdt(self.due.dateTime()), self.notes.toPlainText()
 
@@ -212,9 +228,30 @@ class DeadlineModal(QWidget):
         self.close_modal()
         self.on_save(*values)
 
-    def close_modal(self) -> None:
-        self.parent().removeEventFilter(self)
-        self.deleteLater()
+
+class ConfirmModal(Modal):
+    """Yes/no question with a short warning line, e.g. before deleting."""
+
+    def __init__(
+        self,
+        host: QWidget,
+        heading: str,
+        message: str,
+        warning: str,
+        confirm_text: str,
+        on_confirm: Callable[[], None],
+    ) -> None:
+        super().__init__(host, heading, width=400)
+        self.on_confirm = on_confirm
+        self.body.addWidget(label(message, wrap=True))
+        warn = label(warning, name="warning", wrap=True)
+        self.body.addWidget(warn)
+        self.confirm_btn = self.add_buttons(confirm_text, self._confirm, danger=True)
+        self.open(focus=self.confirm_btn)
+
+    def _confirm(self) -> None:
+        self.close_modal()
+        self.on_confirm()
 
 
 # --- deadline card -----------------------------------------------------------
@@ -302,9 +339,14 @@ class Sidebar(QFrame):
         self.toggle_btn.setObjectName("navToggle")
         self.toggle_btn.setToolTip("Collapse sidebar")
         self.toggle_btn.clicked.connect(self.toggle)
+        # Fixed sizes: as the width animates, the sidebar clips or reveals the
+        # brand instead of the layout squeezing and reflowing it.
+        self.toggle_btn.setFixedSize(self.COLLAPSED - 20, 34)
         top.addWidget(self.toggle_btn)
         self.brand = label("Gameline", name="brand")
-        top.addWidget(self.brand, 1)
+        self.brand.setFixedWidth(self.brand.sizeHint().width() + 8)
+        top.addWidget(self.brand)
+        top.addStretch(1)
         self.lay.addLayout(top)
         self.lay.addSpacing(14)
         self.items_end = self.lay.count()
@@ -349,6 +391,7 @@ class Sidebar(QFrame):
         self.toggle_btn.setToolTip("Collapse sidebar" if self.expanded else "Expand sidebar")
 
     def _apply_labels(self) -> None:
+        # Toggle and brand have fixed sizes, so hiding the brand never reflows the row.
         self.brand.setVisible(self.expanded)
         for btn, icon, text in self.items:
             btn.setText(f"{icon}   {text}" if self.expanded else icon)
@@ -558,10 +601,19 @@ class MainWindow(QMainWindow):
 
         return DeadlineModal(self.centralWidget(), self.ctx.clock.now(), save, d)
 
-    def delete_deadline(self, d: Deadline) -> None:
-        if QMessageBox.question(self, "Delete deadline", f"Delete “{d.title}”?") == QMessageBox.StandardButton.Yes:
+    def delete_deadline(self, d: Deadline) -> ConfirmModal:
+        def confirm() -> None:
             self.ctx.delete_deadline(d.id)
             self.refresh(force=True)
+
+        return ConfirmModal(
+            self.centralWidget(),
+            "Delete deadline",
+            f"Delete “{d.title}” and its work plan?",
+            "This cannot be reversed!",
+            "Delete",
+            confirm,
+        )
 
     def toggle_chunk(self, did: str, index: int, done: bool) -> None:
         self.ctx.set_chunk_done(did, index, done)

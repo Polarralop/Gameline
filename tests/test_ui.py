@@ -8,7 +8,7 @@ QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
 from gameline.context import AppContext  # noqa: E402
 from gameline.store import Store  # noqa: E402
-from gameline.ui.window import DeadlineModal, MainWindow  # noqa: E402
+from gameline.ui.window import ConfirmModal, DeadlineModal, MainWindow  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -52,3 +52,14 @@ def test_sidebar_switches_pages_and_collapses(qapp, tmp_path):
     w.sidebar.anim.setCurrentTime(w.sidebar.anim.duration())
     assert w.sidebar.maximumWidth() == w.sidebar.COLLAPSED
     assert w.sidebar.items[0][0].text() == "📋"
+
+
+def test_delete_asks_in_modal_then_deletes(qapp, tmp_path):
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    ctx.seed_demo_data()
+    w = MainWindow(ctx, lambda: [])
+    modal = w.delete_deadline(ctx.store.load().deadlines[0])
+    assert isinstance(modal, ConfirmModal) and not modal.isWindow()
+    assert len(ctx.store.load().deadlines) == 2  # nothing deleted until confirmed
+    modal.confirm_btn.click()
+    assert len(ctx.store.load().deadlines) == 1

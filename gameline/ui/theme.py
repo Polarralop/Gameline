@@ -41,10 +41,12 @@ def stylesheet() -> str:
     QLineEdit, QPlainTextEdit, QDateTimeEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
         background: {c['card']}; border: 1px solid {c['line']}; border-radius: 8px; padding: 5px 8px; }}
     QFrame#modal {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 14px; }}
+    QLabel#warning {{ color: {c['risk']}; font-size: 12px; }}
+    QPushButton[danger="true"] {{ background: {c['risk']}; }}
     QLabel#modalTitle {{ font-size: 18px; font-weight: 700; }}
     QFrame#sidebar {{ background: {c['side']}; border-right: 1px solid {c['line']}; }}
     QLabel#brand {{ font-size: 16px; font-weight: 700; padding-left: 4px; }}
-    QPushButton#navToggle {{ background: transparent; color: {c['muted']}; font-size: 18px; padding: 4px 10px; }}
+    QPushButton#navToggle {{ background: transparent; color: {c['muted']}; font-size: 18px; padding: 0; }}
     QPushButton#navToggle:hover {{ background: {c['hover']}; }}
     QPushButton#navItem {{ background: transparent; color: {c['muted']}; text-align: left;
                            padding: 9px 0 9px 12px; border-radius: 8px; font-weight: 500; }}

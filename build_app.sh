@@ -18,4 +18,7 @@ else
   .venv/bin/python packaging/prune_qt.py dist/Gameline.app
   codesign --force --deep --sign - dist/Gameline.app  # re-sign after trimming (ad-hoc)
 fi
+# Make Finder and the Dock pick up a changed icon instead of a cached one.
+touch dist/Gameline.app
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f dist/Gameline.app || true
 echo "Built dist/Gameline.app. Open it with: open dist/Gameline.app"

@@ -138,7 +138,11 @@ class GamelineApp:
 def run() -> None:
     qapp = QApplication(sys.argv)
     qapp.setApplicationName("Gameline")
-    qapp.setWindowIcon(dock_icon())  # Dock and app switcher
+    if not getattr(sys, "frozen", False):
+        # Running from source (./run.sh): without this the Dock shows Python's
+        # rocket. Gameline.app uses its bundle icon instead, which macOS masks
+        # to the system shape; overriding it here would undo that.
+        qapp.setWindowIcon(dock_icon())
     qapp.setQuitOnLastWindowClosed(False)  # live on in the menu bar
     # Fusion renders stylesheets the same on every OS, unlike the native Mac style.
     qapp.setStyle("Fusion")

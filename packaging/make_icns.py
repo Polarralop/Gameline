@@ -13,15 +13,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def render(size: int) -> QImage:
-    """The logo already is a rounded tile; size it to Apple's icon grid
-    (tile = 824/1024 of the icon). Same maths as dock_icon() in gameline/ui/app.py."""
+    """Full-bleed, opaque square artwork. macOS 26 (Tahoe) applies the rounded
+    mask itself; an icon that arrives already rounded, with transparent
+    margins, gets shrunk onto a white tile ("icon jail"). So the logo's
+    rounded tile is swapped for a square that fills the canvas."""
+    svg = (ROOT / "assets/icons/logo.svg").read_text()
+    svg = svg.replace('<rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>',
+                      '<rect x="0" y="0" width="128" height="128" fill="url(#bg)"/>')
     img = QImage(size, size, QImage.Format.Format_ARGB32)
     img.fill(Qt.GlobalColor.transparent)
     p = QPainter(img)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    drawn = size * (824 / 1024) / (120 / 128)
-    inset = (size - drawn) / 2
-    QSvgRenderer(str(ROOT / "assets/icons/logo.svg")).render(p, QRectF(inset, inset, drawn, drawn))
+    QSvgRenderer(svg.encode()).render(p, QRectF(0, 0, size, size))
     p.end()
     return img
 

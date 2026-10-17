@@ -351,3 +351,15 @@ def test_existing_users_skip_onboarding(tmp_path):
 
     assert State.from_dict({"deadlines": [{"id": "a", "title": "x", "due": "2030-01-01T00:00"}]}).onboarded
     assert not State.from_dict({}).onboarded
+
+
+def test_claude_only_checked_for_subscription(qapp, tmp_path):
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    ctx.set_backend("gemini")
+    w = MainWindow(ctx, lambda: [])
+    calls = []
+    w.account_checker = lambda: (calls.append(1), AccountStatus(installed=False))[1]
+    w.sidebar.items[3][0].click()  # Preferences
+    assert calls == [] and w.claude_btn.text() == "Not verified"
+    w.backend_box.setCurrentIndex(w.backend_box.findData("claude-cli"))
+    assert w._claude_checking or calls  # switching to the subscription checks

@@ -1208,7 +1208,7 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(index)
         self.page_title.setText(text)
         if text == "Preferences":
-            self.check_claude()
+            self._claude_for_backend()
         if text == "Recap":
             self.recap_page.refresh(force=True)
 
@@ -1919,6 +1919,16 @@ class MainWindow(QMainWindow):
     def _backend_changed(self) -> None:
         self.ctx.set_backend(self.backend_box.currentData())
         self.toast(f"Estimates now use: {self.backend_box.currentText()}")
+        self._claude_for_backend()
+
+    def _claude_for_backend(self) -> None:
+        """Only look at the Claude login when the subscription backend is in
+        use (checking runs the claude command). Otherwise show "Not verified"
+        until Check again is clicked."""
+        if self.ctx.backend_name() == "claude-cli":
+            self.check_claude()
+        elif not self._claude_checking:
+            self._show_claude("unverified")
 
     def check_claude(self, force: bool = False) -> None:
         """Show the Claude login status. Uses the saved result from the last
@@ -1947,6 +1957,16 @@ class MainWindow(QMainWindow):
     def _show_claude(self, status: AccountStatus | None) -> None:
         self.claude_account = status
         btn = self.claude_btn
+        if status == "unverified":
+            btn.setText("Not verified")
+            btn.setEnabled(True)
+            btn.setToolTip("Click to check your Claude login")
+            btn.setProperty("tone", "idle")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+            self.claude_account = None
+            self.claude_status.setText("Checked only when Claude subscription is selected.")
+            return
         if status is None:
             text, tone, enabled = ("Waiting for login…" if self.login_timer.isActive() else "Checking Claude…"), "idle", False
         elif not status.installed:
@@ -1973,6 +1993,9 @@ class MainWindow(QMainWindow):
 
     def claude_account_clicked(self) -> None:
         status = self.claude_account
+        if self.claude_btn.text() == "Not verified":
+            self.check_claude(force=True)
+            return
         if status and status.ok:
             def do_logout() -> None:
                 self.pool.start(Job(lambda: (claude_logout(), account_status(verify=False))[1], self._claude_checked))

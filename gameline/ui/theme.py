@@ -124,6 +124,7 @@ def stylesheet() -> str:
     QFrame#modal {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 14px; }}
     QPushButton#claudeAccount[tone="ok"] {{ background: {c['ok_bg']}; color: {c['ok']}; }}
     QPushButton#claudeAccount[tone="idle"] {{ background: {c['line']}; color: {c['muted']}; }}
+    QPushButton#claudeAccount[tone="idle"]:enabled:hover {{ color: {c['ink']}; }}
     QFrame#toast {{ background: {c['card']}; border: 1px solid {c['line']}; border-left: 3px solid {c['accent']};
                     border-radius: 10px; }}
     QFrame#toast[tone="ok"] {{ border-left-color: {c['ok']}; }}

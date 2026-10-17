@@ -65,7 +65,7 @@ def fmt_dt(dt: datetime) -> str:
 
 
 def to_qdt(dt: datetime) -> QDateTime:
-    return QDateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute)
+    return QDateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute, 0)
 
 
 def from_qdt(q: QDateTime) -> datetime:

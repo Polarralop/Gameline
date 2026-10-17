@@ -7,12 +7,14 @@ to the UI through the shared store, which the window re-reads on a timer.
 from __future__ import annotations
 
 import sys
+import threading
 
 from PySide6.QtCore import QRect, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from ..context import AppContext
+from ..notify import notify
 from ..reminders import Reminders
 from ..watcher import Watcher
 from .theme import stylesheet
@@ -57,6 +59,7 @@ class GamelineApp:
         self.demo_action.toggled.connect(self.ctx.set_demo_mode)
         menu.addAction(self.demo_action)
         self.game_action = menu.addAction("Launch fake game", self.toggle_fake_game)
+        menu.addAction("Send test notification", self.test_notification)
         menu.addSeparator()
         menu.addAction("Quit Gameline", self.quit)
         self.tray.setContextMenu(menu)
@@ -96,6 +99,10 @@ class GamelineApp:
         else:
             self.ctx.start_fake_game()
         self.refresh()
+
+    def test_notification(self) -> None:
+        # Off the GUI thread: notify() blocks briefly while macOS delivers it.
+        threading.Thread(target=notify, args=("Gameline test", "Notifications are working."), daemon=True).start()
 
     def quit(self) -> None:
         self.watcher.stop()

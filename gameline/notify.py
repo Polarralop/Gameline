@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import subprocess
+import sys
 
 from desktop_notifier import DesktopNotifier
 
@@ -22,10 +23,46 @@ APP_NAME = "Gameline"
 _notifier: DesktopNotifier | None = None
 
 
+# macOS hides banners from the frontmost app unless its notification delegate
+# says otherwise. Once Gameline has its own window it is often frontmost (for
+# example right after clicking "Launch fake game"), so opt into banners anyway.
+_UN_PRESENT_SOUND, _UN_PRESENT_LIST, _UN_PRESENT_BANNER = 1 << 1, 1 << 3, 1 << 4
+
+if sys.platform == "darwin":
+    from desktop_notifier.backends.macos import NotificationCenterDelegate
+    from rubicon.objc import objc_method
+    from rubicon.objc.runtime import objc_block, objc_id
+
+    class _ForegroundDelegate(NotificationCenterDelegate):  # type: ignore[misc, valid-type]
+        @objc_method
+        def userNotificationCenter_willPresentNotification_withCompletionHandler_(
+            self, center: objc_id, notification: objc_id, completion_handler: objc_block
+        ) -> None:
+            completion_handler(_UN_PRESENT_BANNER | _UN_PRESENT_LIST | _UN_PRESENT_SOUND)
+
+    def _show_in_foreground(notifier: DesktopNotifier) -> None:
+        backend = getattr(notifier, "_backend", None)
+        if backend is None or not hasattr(backend, "nc"):
+            return
+        delegate = _ForegroundDelegate.alloc().init()
+        delegate.implementation = backend
+        backend.nc_delegate = delegate  # keep a strong reference
+        backend.nc.delegate = delegate
+
+else:
+
+    def _show_in_foreground(notifier: DesktopNotifier) -> None:
+        pass
+
+
 def _get() -> DesktopNotifier:
     global _notifier
     if _notifier is None:
         _notifier = DesktopNotifier(app_name=APP_NAME)
+        try:
+            _show_in_foreground(_notifier)
+        except Exception:
+            log.exception("Could not enable foreground banners")
     return _notifier
 
 

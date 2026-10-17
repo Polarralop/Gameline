@@ -12,7 +12,8 @@ A lightweight menu bar app that tracks your deadlines, notices when you launch a
 
 Pick how estimates are made in Preferences → AI estimates (or set `GAMELINE_LLM`):
 
-- `claude`: Claude API, needs `ANTHROPIC_API_KEY=...` in `.env` (default)
+- `gemini`: Gemini API (gemini-3.8-flash), needs `GEMINI_API_KEY=...` in `.env`
+- `claude`: Claude API, needs `ANTHROPIC_API_KEY=...` in `.env`
 - `claude-cli`: your Claude subscription through the local Claude Code CLI; log in from Preferences. Personal use only.
 - `stub`: offline rough guesses
 

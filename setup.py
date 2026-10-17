@@ -19,7 +19,10 @@ DATA_FILES = [
 ]
 OPTIONS = {
     "iconfile": "packaging/icon-build/AppIcon.icns",
-    "packages": ["gameline", "anthropic", "desktop_notifier", "pypdf", "psutil", "dotenv"],
+    "packages": ["gameline", "anthropic", "desktop_notifier", "pypdf", "psutil", "dotenv",
+                 # google-genai's own dependencies. The `google` namespace package itself
+                 # (genai, auth) can't be traced by py2app; build_app.sh copies it in.
+                 "requests", "tenacity", "websockets", "distro", "cryptography", "pyasn1", "pyasn1_modules"],
     "includes": ["rubicon.objc"],
     "plist": {
         "CFBundleName": "Gameline",

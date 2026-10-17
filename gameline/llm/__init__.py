@@ -2,6 +2,7 @@
 
 claude      Claude API (ANTHROPIC_API_KEY), the default
 claude-cli  local Claude Code CLI on your Claude subscription (personal use only)
+gemini      Gemini API (GEMINI_API_KEY)
 stub        offline keyword guesses, for tests and demos without network
 """
 
@@ -20,7 +21,12 @@ load_dotenv(REPO_ROOT / ".env")
 load_dotenv(data_dir() / ".env")
 
 
-BACKENDS = {"claude": "Claude API key", "claude-cli": "Claude subscription", "stub": "Offline (rough guesses)"}
+BACKENDS = {
+    "gemini": "Gemini API key",
+    "claude": "Claude API key",
+    "claude-cli": "Claude subscription",
+    "stub": "Offline (rough guesses)",
+}
 
 
 def default_backend() -> str:
@@ -37,6 +43,10 @@ def get_llm(name: str | None = None) -> EstimatorLLM:
         from .claude_cli import ClaudeCLILLM
 
         return ClaudeCLILLM()
+    if name == "gemini":
+        from .gemini import GeminiLLM
+
+        return GeminiLLM()
     if name == "stub":
         from .stub import StubLLM
 

@@ -91,3 +91,9 @@ def test_danger_zone(tmp_path):
     assert s.working_style.notify_level == NotifyLevel.OFF  # preferences kept
     ctx.delete_everything()
     assert ctx.store.load().to_dict() == State().to_dict()
+
+
+def test_gemini_backend_is_registered():
+    from gameline.llm import BACKENDS
+
+    assert "gemini" in BACKENDS

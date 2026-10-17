@@ -1456,12 +1456,19 @@ class MainWindow(QMainWindow):
             # once with the old geometry and flashes.
             self.cards.activate()
             QApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)
-            # Resume painting after any remaining posted layout work.
-            QTimer.singleShot(0, self._unfreeze)
+            # Resume straight away. (A zero-delay timer here could sit unfired
+            # on macOS until the next mouse event, so a page appeared only on
+            # a second click.)
+            self._unfreeze()
 
     def _unfreeze(self) -> None:
         if getattr(self, "_freeze_depth", 0) == 0:
             self.setUpdatesEnabled(True)
+            # On macOS re-enabling updates doesn't schedule a repaint by itself,
+            # so the new page only appeared on the next tick or click. Ask now.
+            self.update()
+            if self.centralWidget():
+                self.centralWidget().update()
 
     def _rebuild_cards(self, now: datetime) -> None:
         """Recreate every card (deadlines added, deleted or re-estimated)."""

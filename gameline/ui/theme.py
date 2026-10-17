@@ -176,6 +176,9 @@ def stylesheet() -> str:
     QFrame#segment {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 9px; }}
     QPushButton#segButton {{ background: transparent; color: {c['muted']}; padding: 5px 16px; border-radius: 7px; font-weight: 500; }}
     QPushButton#segButton:checked {{ background: {c['accent']}; color: white; font-weight: 600; }}
+    QPushButton#foldAll {{ background: transparent; color: {c['muted']}; border: 1px solid {c['line']};
+        padding: 0 12px; font-weight: 500; }}
+    QPushButton#foldAll:hover {{ color: {c['ink']}; background: {c['hover']}; }}
     QPushButton#secondary {{ background: transparent; color: {c['accent']}; border: 1px solid {c['accent']}; }}
     QPushButton#secondary:hover {{ background: {c['hover']}; }}
     QScrollArea#proposalList, QWidget#proposalList {{ background: transparent; }}

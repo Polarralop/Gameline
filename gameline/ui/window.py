@@ -1240,6 +1240,13 @@ class MainWindow(QMainWindow):
         self.show_done.setChecked(state.show_completed)
         for w_ in (self.sort_box, self.show_done):
             w_.blockSignals(False)
+        self.fold_btn = QPushButton()
+        self.fold_btn.setObjectName("foldAll")
+        self.fold_btn.setFixedHeight(36)
+        self.fold_btn.setIconSize(QSize(12, 12))
+        self.fold_btn.clicked.connect(self.toggle_all_collapsed)
+        bar.addWidget(self.fold_btn)
+        bar.addSpacing(8)
         bar.addWidget(self.sort_box)
         bar.addSpacing(8)
         bar.addWidget(self.show_done)
@@ -1506,6 +1513,7 @@ class MainWindow(QMainWindow):
             self._arrange_cards(state)
         finally:
             self._freeze(False)
+        self._update_fold_btn()
 
     def replace_card(self, did: str) -> None:
         """Recreate one card (it was completed or reopened) and re-place it."""
@@ -1524,6 +1532,7 @@ class MainWindow(QMainWindow):
             self._arrange_cards(state)
         finally:
             self._freeze(False)
+        self._update_fold_btn()
         self._signature = self._cards_signature(state)  # so the timer doesn't rebuild everything
 
     def _arrange_cards(self, state=None) -> None:
@@ -1706,11 +1715,35 @@ class MainWindow(QMainWindow):
         self.refresh()
         self.toast("Deadline reopened")
 
+    def _foldable(self) -> list[str]:
+        """Ids of cards that have a task list to fold (estimated, not completed)."""
+        return [did for did, card in self.card_widgets.items() if getattr(card, "details", None) is not None]
+
+    def _update_fold_btn(self) -> None:
+        ids = self._foldable()
+        expand = bool(ids) and all(did in self.collapsed for did in ids)
+        self.fold_btn.setText("Expand all" if expand else "Collapse all")
+        self.fold_btn.setIcon(QIcon(icon_path("chevron-right" if expand else "chevron-down", colors()["muted"])))
+        self.fold_btn.setEnabled(bool(ids))
+
+    def toggle_all_collapsed(self) -> None:
+        ids = self._foldable()
+        collapse = not all(did in self.collapsed for did in ids)
+        self._freeze(True)
+        try:
+            for did in ids:
+                (self.collapsed.add if collapse else self.collapsed.discard)(did)
+                self.card_widgets[did].set_collapsed(collapse)
+        finally:
+            self._freeze(False)
+        self._update_fold_btn()
+
     def toggle_collapsed(self, did: str) -> None:
         self.collapsed.symmetric_difference_update({did})
         card = self.card_widgets.get(did)
         if card:
             card.set_collapsed(did in self.collapsed)
+        self._update_fold_btn()
 
     def toggle_chunk(self, did: str, index: int, done: bool) -> None:
         self.ctx.set_chunk_done(did, index, done)

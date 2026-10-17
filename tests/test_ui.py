@@ -294,3 +294,18 @@ def test_danger_zone_asks_first(qapp, tmp_path):
     assert isinstance(modal, ConfirmModal) and ctx.store.load().deadlines  # nothing gone yet
     modal.confirm_btn.click()
     assert ctx.store.load().deadlines == [] and ctx.store.load().sessions == []
+
+
+def test_collapse_and_expand_all(qapp, tmp_path):
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    ctx.seed_demo_data()
+    w = MainWindow(ctx, lambda: [])
+    before = dict(w.card_widgets)
+    assert w.fold_btn.text() == "Collapse all"
+    w.fold_btn.click()
+    ids = w._foldable()
+    assert ids and all(not w.card_widgets[i].details.isVisibleTo(w) for i in ids)
+    assert w.fold_btn.text() == "Expand all"
+    w.fold_btn.click()
+    assert all(w.card_widgets[i].details.isVisibleTo(w) for i in ids)
+    assert w.card_widgets == before  # folded in place, nothing rebuilt

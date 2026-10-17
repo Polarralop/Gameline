@@ -111,3 +111,21 @@ def test_toast_auto_dismisses(qapp, tmp_path):
         qapp.processEvents()
         time.sleep(0.01)
     assert w.toaster.toasts == []
+
+
+def test_collapse_arrow_hides_tasks(qapp, tmp_path):
+    from gameline.ui.window import DeadlineCard, TaskRow
+
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    ctx.seed_demo_data()
+    w = MainWindow(ctx, lambda: [])
+    did = ctx.store.load().deadlines[0].id
+
+    def first_card():
+        return next(w.cards.itemAt(i).widget() for i in range(w.cards.count())
+                    if isinstance(w.cards.itemAt(i).widget(), DeadlineCard))
+
+    assert first_card().findChildren(TaskRow)
+    w.toggle_collapsed(did)
+    w.refresh(force=True)
+    assert not first_card().findChildren(TaskRow)

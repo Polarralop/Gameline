@@ -20,12 +20,13 @@ from PySide6.QtCore import (
     QParallelAnimationGroup,
     QPropertyAnimation,
     QRunnable,
+    QSize,
     Qt,
     QThreadPool,
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QShortcut
+from PySide6.QtGui import QColor, QIcon, QKeySequence, QPainter, QPen, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -44,6 +45,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QStackedWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -54,7 +56,7 @@ from ..llm.claude_cli import AccountStatus, account_status, open_login_terminal
 from ..llm.claude_cli import logout as claude_logout
 from ..models import Deadline, Style, WorkingStyle
 from ..planner import DeadlineStatus, assess
-from .theme import colors
+from .theme import colors, icon_path
 
 STYLE_LABELS = {Style.SHORT_BURSTS: "Short bursts", Style.MIXED: "Mixed", Style.LONG_SESSIONS: "Long sessions"}
 
@@ -366,6 +368,42 @@ class Toaster(QObject):
 # --- deadline card -----------------------------------------------------------
 
 
+class TaskRow(QWidget):
+    """Checkbox, wrapping task title, and hours/time on the right. Clicking the
+    title toggles the box too."""
+
+    def __init__(self, chunk, on_toggle: Callable[[bool], None]) -> None:
+        super().__init__()
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 3, 0, 3)
+        row.setSpacing(10)
+        self.box = QCheckBox()
+        self.box.setChecked(chunk.done)
+        self.box.toggled.connect(on_toggle)
+        self.box.setCursor(Qt.CursorShape.PointingHandCursor)
+        row.addWidget(self.box, 0, Qt.AlignmentFlag.AlignTop)
+
+        self.title = QLabel(chunk.title)
+        self.title.setObjectName("task")
+        self.title.setWordWrap(True)
+        self.title.setProperty("done", chunk.done)
+        font = self.title.font()
+        font.setStrikeOut(chunk.done)
+        self.title.setFont(font)
+        self.title.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.title.mousePressEvent = lambda e: self.box.toggle()
+        row.addWidget(self.title, 1)
+
+        meta = f"{chunk.hours:g}h"
+        if chunk.start:
+            meta += f" · {chunk.start.strftime('%a %-I:%M %p')}"
+        when = QLabel(meta)
+        when.setObjectName("taskMeta")
+        when.setContentsMargins(0, 2, 0, 0)  # line up with the larger title text
+        row.addWidget(when, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
+
+
+
 class DeadlineCard(QFrame):
     def __init__(self, window: MainWindow, s: DeadlineStatus) -> None:
         super().__init__()
@@ -396,6 +434,15 @@ class DeadlineCard(QFrame):
             top.addWidget(pill("Not estimated", "idle"), 0, Qt.AlignmentFlag.AlignTop)
         else:
             top.addWidget(pill("At risk" if s.at_risk else "On track", "risk" if s.at_risk else "ok"), 0, Qt.AlignmentFlag.AlignTop)
+            expanded = d.id not in window.collapsed
+            arrow = QToolButton()
+            arrow.setObjectName("collapse")
+            arrow.setIcon(QIcon(icon_path("chevron-down" if expanded else "chevron-right", colors()["muted"])))
+            arrow.setIconSize(QSize(14, 14))
+            arrow.setToolTip("Hide tasks" if expanded else "Show tasks")
+            arrow.setCursor(Qt.CursorShape.PointingHandCursor)
+            arrow.clicked.connect(lambda: window.toggle_collapsed(d.id))
+            top.addWidget(arrow, 0, Qt.AlignmentFlag.AlignTop)
         lay.addLayout(top)
 
         if not estimated:
@@ -433,17 +480,19 @@ class DeadlineCard(QFrame):
             lay.addWidget(label(
                 f"{s.remaining_hours:.1f}h of work left · {have:.1f}h realistically available · "
                 f"slack {s.slack_hours:+.1f}h", muted=True))
-            if d.estimate.rationale:
-                lay.addWidget(label(d.estimate.rationale, muted=True, wrap=True))
-            for i, c in enumerate(d.estimate.chunks):
-                text = f"{c.title} · {c.hours:g}h"
-                if c.start:
-                    text += f" · {c.start.strftime('%a %-I:%M %p')}"
-                box = QCheckBox(text)
-                box.setChecked(c.done)
-                box.setProperty("done", c.done)
-                box.toggled.connect(lambda on, i=i, did=d.id: window.toggle_chunk(did, i, on))
-                lay.addWidget(box)
+            chunks = d.estimate.chunks
+            if d.id in window.collapsed:
+                done = sum(c.done for c in chunks)
+                lay.addWidget(label(f"{done} of {len(chunks)} tasks done", muted=True))
+            else:
+                if d.estimate.rationale:
+                    lay.addWidget(label(d.estimate.rationale, muted=True, wrap=True))
+                tasks = QVBoxLayout()
+                tasks.setContentsMargins(0, 4, 0, 0)
+                tasks.setSpacing(2)
+                for i, c in enumerate(chunks):
+                    tasks.addWidget(TaskRow(c, lambda on, i=i, did=d.id: window.toggle_chunk(did, i, on)))
+                lay.addLayout(tasks)
 
         actions = QHBoxLayout()
         actions.addStretch(1)
@@ -560,6 +609,7 @@ class MainWindow(QMainWindow):
         self.ctx = ctx
         self.sessions = sessions  # names of games currently being played
         self.pending: set[str] = set()  # deadline ids being estimated right now
+        self.collapsed: set[str] = set()  # deadline ids whose task list is hidden
         self._signature = None
         self.pool = QThreadPool.globalInstance()
         self.account_checker = account_status  # swapped out in tests
@@ -834,6 +884,10 @@ class MainWindow(QMainWindow):
             "Delete",
             confirm,
         )
+
+    def toggle_collapsed(self, did: str) -> None:
+        self.collapsed.symmetric_difference_update({did})
+        QTimer.singleShot(0, lambda: self.refresh(force=True))
 
     def toggle_chunk(self, did: str, index: int, done: bool) -> None:
         self.ctx.set_chunk_done(did, index, done)

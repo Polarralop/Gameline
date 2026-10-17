@@ -23,16 +23,28 @@ def colors() -> dict[str, str]:
     return DARK if dark else LIGHT
 
 
-def _chevron(color: str) -> str:
-    """Write a small chevron SVG in the theme color; stylesheets need a file path."""
-    path = Path(tempfile.gettempdir()) / f"gameline-chevron-{color.lstrip('#')}.svg"
+ICON_PATHS = {
+    "chevron-down": "M2.5 4.5 6 8l3.5-3.5",
+    "chevron-right": "M4.5 2.5 8 6l-3.5 3.5",
+    "check": "M2.6 6.2 5 8.6 9.6 3.6",
+}
+
+
+def icon_path(name: str, color: str, stroke: float = 1.6) -> str:
+    """Write a small line icon as an SVG file in the given color and return its path.
+    Stylesheets can only load images from files, so icons are generated per theme."""
+    path = Path(tempfile.gettempdir()) / f"gameline-{name}-{color.lstrip('#')}-{stroke}.svg"
     if not path.exists():
         path.write_text(
             f'<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">'
-            f'<path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="{color}" stroke-width="1.6" '
+            f'<path d="{ICON_PATHS[name]}" fill="none" stroke="{color}" stroke-width="{stroke}" '
             f'stroke-linecap="round" stroke-linejoin="round"/></svg>'
         )
     return path.as_posix()
+
+
+def _chevron(color: str) -> str:
+    return icon_path("chevron-down", color)
 
 
 def palette() -> QPalette:
@@ -55,6 +67,7 @@ def palette() -> QPalette:
 def stylesheet() -> str:
     c = colors()
     chevron = _chevron(c["muted"])
+    check = icon_path("check", "#ffffff", 2.0)
     return f"""
     QWidget {{ color: {c['ink']}; font-size: 14px; }}
     QMainWindow, QDialog, QScrollArea, #page {{ background: {c['bg']}; }}
@@ -103,5 +116,19 @@ def stylesheet() -> str:
                            padding: 9px 0 9px 12px; border-radius: 8px; font-weight: 500; }}
     QPushButton#navItem:hover {{ background: {c['hover']}; color: {c['ink']}; }}
     QPushButton#navItem:checked {{ background: {c['card']}; color: {c['ink']}; font-weight: 600; }}
-    QCheckBox[done="true"] {{ color: {c['muted']}; }}
+    QCheckBox {{ spacing: 0px; }}
+    QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 5px;
+        border: 1.5px solid {c['muted']}; background: transparent; }}
+    QCheckBox::indicator:hover {{ border-color: {c['accent']}; }}
+    QCheckBox::indicator:checked {{ background: {c['ok']}; border-color: {c['ok']}; image: url({check}); }}
+    QLabel#task {{ font-size: 14px; }}
+    QLabel#task[done="true"] {{ color: {c['muted']}; }}
+    QLabel#taskMeta {{ color: {c['muted']}; font-size: 12px; }}
+    QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
+    QScrollBar::handle:vertical {{ background: {c['line']}; border-radius: 3px; min-height: 30px; }}
+    QScrollBar::handle:vertical:hover {{ background: {c['muted']}; }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
+    QToolButton#collapse {{ background: transparent; border: 0; border-radius: 6px; padding: 4px; }}
+    QToolButton#collapse:hover {{ background: {c['line']}; }}
     """

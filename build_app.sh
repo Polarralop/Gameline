@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 # Move any old repo-local data into ~/Library/Application Support/Gameline first,
 # so the app sees the same deadlines as ./run.sh.
 .venv/bin/python -c "from gameline.paths import migrate_legacy_data as m; [print('Moved', p) for p in m()]"
-[ -f packaging/Gameline.icns ] || .venv/bin/python packaging/make_icns.py
+.venv/bin/python packaging/make_icon.py  # compiles packaging/AppIcon.icon (needs Xcode)
 rm -rf build dist
 if [ "$1" = "--alias" ]; then
   .venv/bin/python setup.py -q py2app -A

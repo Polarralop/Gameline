@@ -29,7 +29,7 @@ def make_icon(at_risk: bool) -> QIcon:
 
 # Apple's icon grid: on a 1024 canvas the rounded tile is 824 wide (80.5%).
 # logo.svg's tile fills 120/128 of its own canvas, so draw the SVG at
-# 0.805 / 0.9375 of the icon and centre it. Shared with packaging/make_icns.py.
+# 0.805 / 0.9375 of the icon and centre it. Used only when running from source; the .app uses packaging/AppIcon.icon.
 DOCK_TILE, LOGO_TILE = 824 / 1024, 120 / 128
 
 

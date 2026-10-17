@@ -8,18 +8,24 @@
 from setuptools import setup
 
 APP = ["packaging/launcher.py"]
-DATA_FILES = [("assets/icons", [
+DATA_FILES = [
+    # Compiled app icon (see packaging/make_icon.py): macOS 26 reads Assets.car,
+    # older versions fall back to AppIcon.icns.
+    ("", ["packaging/icon-build/Assets.car"]),
+    ("assets/icons", [
     "assets/icons/calendar.svg", "assets/icons/chart.svg", "assets/icons/demo.svg", "assets/icons/gear.svg",
     "assets/icons/logo.svg", "assets/icons/logo-ok.svg", "assets/icons/logo-risk.svg",
-])]
+]),
+]
 OPTIONS = {
-    "iconfile": "packaging/Gameline.icns",
+    "iconfile": "packaging/icon-build/AppIcon.icns",
     "packages": ["gameline", "anthropic", "desktop_notifier", "pypdf", "psutil", "dotenv"],
     "includes": ["rubicon.objc"],
     "plist": {
         "CFBundleName": "Gameline",
         "CFBundleDisplayName": "Gameline",
         "CFBundleIdentifier": "ca.polarralop.gameline",
+        "CFBundleIconName": "AppIcon",  # the icon inside Assets.car
         "CFBundleShortVersionString": "0.1.0",
         "NSHighResolutionCapable": True,
         "LSMinimumSystemVersion": "13.0",

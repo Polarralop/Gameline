@@ -145,6 +145,28 @@ class AppContext:
             state.show_completed = show_completed
         self.store.save(state)
 
+    # --- danger zone -------------------------------------------------------
+
+    def delete_all_deadlines(self) -> int:
+        """Remove every deadline, open and completed (and the task history the
+        recaps count as work). Returns how many were removed."""
+        with self.store.lock:
+            state = self.store.load()
+            n = len(state.deadlines)
+            state.deadlines = []
+            self.store.save(state)
+        return n
+
+    def delete_all_data(self) -> None:
+        """Everything except deadlines: gaming history, tagged games and all
+        preferences go back to how a new install starts."""
+        with self.store.lock:
+            deadlines = self.store.load().deadlines
+            self.store.save(State(deadlines=deadlines))
+
+    def delete_everything(self) -> None:
+        self.store.save(State())
+
     def delete_deadline(self, did: str) -> None:
         state = self.store.load()
         state.deadlines = [d for d in state.deadlines if d.id != did]

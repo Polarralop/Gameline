@@ -3,7 +3,7 @@ from datetime import datetime
 from gameline.context import AppContext
 from gameline.llm.stub import StubLLM
 from gameline.models import NotifyLevel, Style, WorkingStyle
-from gameline.store import Store
+from gameline.store import State, Store
 
 
 def make(tmp_path):
@@ -74,3 +74,18 @@ def test_complete_and_reopen(tmp_path):
     assert ctx.status_line() == "On track"  # completed deadlines don't count as at risk
     ctx.reopen_deadline(a2.id)
     assert not ctx.store.load().get(a2.id).completed
+
+
+def test_danger_zone(tmp_path):
+    ctx = make(tmp_path)
+    ctx.seed_demo_data()
+    ctx.add_tagged_game("Minecraft")
+    assert ctx.delete_all_deadlines() > 0
+    s = ctx.store.load()
+    assert s.deadlines == [] and s.tagged_games == ["Minecraft"] and s.sessions  # data kept
+    ctx.seed_demo_data()
+    ctx.delete_all_data()
+    s = ctx.store.load()
+    assert s.deadlines and not s.sessions and s.tagged_games == []  # deadlines kept
+    ctx.delete_everything()
+    assert ctx.store.load().to_dict() == State().to_dict()

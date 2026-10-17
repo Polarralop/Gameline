@@ -129,6 +129,9 @@ def stylesheet() -> str:
     QFrame#toast[tone="ok"] {{ border-left-color: {c['ok']}; }}
     QFrame#toast[tone="error"] {{ border-left-color: {c['risk']}; }}
     QLabel[pill="idle"] {{ background: {c['line']}; color: {c['muted']}; border-radius: 10px; padding: 2px 10px; font-weight: 600; }}
+    QLabel#dangerTitle {{ color: {c['risk']}; font-size: 12px; font-weight: 600; letter-spacing: 1px; }}
+    QPushButton#dangerButton {{ background: transparent; color: {c['risk']}; border: 1px solid {c['risk']}; }}
+    QPushButton#dangerButton:hover {{ background: {c['risk_bg']}; }}
     QLabel#warning {{ color: {c['risk']}; font-size: 12px; }}
     QPushButton[danger="true"] {{ background: {c['risk']}; }}
     QLabel#modalTitle {{ font-size: 18px; font-weight: 700; }}

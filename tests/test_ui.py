@@ -282,3 +282,15 @@ def test_recap_page_shows_demo_history(qapp, tmp_path):
     page.shift(1)
     page.shift(1)  # can't go into the future
     assert page.offset == 0 and not page.next_btn.isEnabled()
+
+
+def test_danger_zone_asks_first(qapp, tmp_path):
+    from gameline.ui.window import ConfirmModal
+
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    ctx.seed_demo_data()
+    w = MainWindow(ctx, lambda: [])
+    modal = w.confirm_wipe("everything")
+    assert isinstance(modal, ConfirmModal) and ctx.store.load().deadlines  # nothing gone yet
+    modal.confirm_btn.click()
+    assert ctx.store.load().deadlines == [] and ctx.store.load().sessions == []

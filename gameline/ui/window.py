@@ -1352,6 +1352,26 @@ class MainWindow(QMainWindow):
         form.addRow("Claude account", self.claude_btn)
         form.addRow("", self.claude_status)
 
+        # --- danger zone ------------------------------------------------------
+        form.addRow(QLabel(""))
+        form.addRow(label("DANGER ZONE", name="dangerTitle"))
+        for text, detail, action in (
+            ("Delete all deadlines", "Every deadline, open and completed, with its tasks.", "deadlines"),
+            ("Delete all data", "Gaming history, tagged games and preferences. Deadlines stay.", "data"),
+            ("Delete everything", "Deadlines and all data. Gameline starts fresh.", "everything"),
+        ):
+            b = QPushButton(text)
+            b.setObjectName("dangerButton")
+            b.setFixedSize(220, 36)
+            b.clicked.connect(lambda _=False, a=action: self.confirm_wipe(a))
+            row = QWidget()
+            h = QHBoxLayout(row)
+            h.setContentsMargins(0, 0, 0, 0)
+            h.setSpacing(14)
+            h.addWidget(b)
+            h.addWidget(label(detail, muted=True), 1)
+            form.addRow("", row)
+
         # One consistent size for every field and button on the page.
         for w in (self.style_box, self.daily_hours, self.notify_box, self.max_minutes, self.repeat_minutes, save,
                   self.backend_box, self.claude_btn):
@@ -1695,6 +1715,38 @@ class MainWindow(QMainWindow):
     def toggle_chunk(self, did: str, index: int, done: bool) -> None:
         self.ctx.set_chunk_done(did, index, done)
         self.refresh()  # updates this card's bar, stats and pill in place
+
+    WIPES = {
+        "deadlines": ("Delete all deadlines?",
+                      "Every deadline, open and completed, and all of their tasks will be removed. "
+                      "Your recaps lose the work history that came from them."),
+        "data": ("Delete all data?",
+                 "Your gaming history, tagged games and preferences will be reset. "
+                 "Deadlines are kept."),
+        "everything": ("Delete everything?",
+                       "All deadlines, gaming history, tagged games and preferences will be removed. "
+                       "Gameline starts fresh."),
+    }
+
+    def confirm_wipe(self, what: str) -> ConfirmModal:
+        heading, message = self.WIPES[what]
+
+        def wipe() -> None:
+            if what == "deadlines":
+                n = self.ctx.delete_all_deadlines()
+                self.toast(f"Deleted {n} deadline{'s' if n != 1 else ''}", "ok")
+            elif what == "data":
+                self.ctx.delete_all_data()
+                self.toast("Data and preferences reset", "ok")
+            else:
+                self.ctx.delete_everything()
+                self.toast("Everything deleted. Gameline starts fresh.", "ok")
+            self.collapsed.clear()
+            self._load_settings()
+            self.refresh(force=True)
+
+        return ConfirmModal(self.centralWidget(), heading, message,
+                            "This can't be reversed!", "Delete", wipe)
 
     def _load_settings(self) -> None:
         state = self.ctx.store.load()

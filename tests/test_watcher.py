@@ -52,3 +52,17 @@ def test_listener_errors_do_not_kill_the_loop():
     w = Watcher([det], Broken(), clock=FixedClock(datetime(2026, 1, 1)))
     w.poll_once()
     assert "x" in w.sessions
+
+
+def test_clock_keeps_up_across_sleep(monkeypatch):
+    import time as _time
+
+    from gameline.clock import Clock
+
+    real = _time.time()
+    monkeypatch.setattr(_time, "time", lambda: real)
+    clock = Clock()
+    start = clock.now()
+    # Lid closed for 5 minutes: wall time moves on (the monotonic clock wouldn't).
+    monkeypatch.setattr(_time, "time", lambda: real + 300)
+    assert abs((clock.now() - start).total_seconds() - 300) < 1

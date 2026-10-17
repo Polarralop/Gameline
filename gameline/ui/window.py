@@ -248,7 +248,7 @@ class Sidebar(QFrame):
             a.setDuration(160)
             a.setEasingCurve(QEasingCurve.Type.OutCubic)
             self.anim.addAnimation(a)
-        self.anim.finished.connect(self._apply_labels)
+        self.anim.finished.connect(lambda: None if self.expanded else self._apply_labels())
 
     def add_item(self, icon: str, text: str) -> None:
         btn = QPushButton()
@@ -269,8 +269,10 @@ class Sidebar(QFrame):
     def toggle(self) -> None:
         self.expanded = not self.expanded
         start, end = (self.COLLAPSED, self.EXPANDED) if self.expanded else (self.EXPANDED, self.COLLAPSED)
-        if not self.expanded:
-            self._apply_labels()  # hide text first so it doesn't squash while shrinking
+        if self.expanded:
+            # Show labels up front; the growing sidebar reveals them left to right.
+            # Icons keep the same left padding in both states, so they never move.
+            self._apply_labels()
         for i in range(self.anim.animationCount()):
             a = self.anim.animationAt(i)
             a.setStartValue(start)
@@ -282,10 +284,6 @@ class Sidebar(QFrame):
         self.brand.setVisible(self.expanded)
         for btn, icon, text in self.items:
             btn.setText(f"{icon}   {text}" if self.expanded else icon)
-            # Collapsed buttons center the icon with no side padding, so it isn't clipped.
-            btn.setProperty("compact", not self.expanded)
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
 
 
 # --- main window -------------------------------------------------------------

@@ -45,8 +45,7 @@ def stylesheet() -> str:
     QPushButton#navToggle {{ background: transparent; color: {c['muted']}; font-size: 18px; padding: 4px 10px; }}
     QPushButton#navToggle:hover {{ background: {c['hover']}; }}
     QPushButton#navItem {{ background: transparent; color: {c['muted']}; text-align: left;
-                           padding: 9px 12px; border-radius: 8px; font-weight: 500; }}
-    QPushButton#navItem[compact="true"] {{ text-align: center; padding: 9px 0; }}
+                           padding: 9px 0 9px 12px; border-radius: 8px; font-weight: 500; }}
     QPushButton#navItem:hover {{ background: {c['hover']}; color: {c['ink']}; }}
     QPushButton#navItem:checked {{ background: {c['card']}; color: {c['ink']}; font-weight: 600; }}
     QCheckBox[done="true"] {{ color: {c['muted']}; }}

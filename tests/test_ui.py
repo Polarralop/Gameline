@@ -227,9 +227,12 @@ def test_complete_button_flow(qapp, tmp_path):
     modal.confirm_btn.click()
     d = ctx.store.load().get(a2.id)
     assert d.completed and d.all_tasks_done
-    assert a2.id not in w.card_widgets  # hidden while "Show completed" is off
+    card = w.card_widgets[a2.id]
+    assert not card.isVisibleTo(w)  # hidden while "Show completed" is off
+    others = dict(w.card_widgets)
     w.show_done.setChecked(True)
-    assert a2.id in w.card_widgets
+    assert card.isVisibleTo(w)
+    assert w.card_widgets == others  # toggling the view moves cards, never recreates them
 
 
 def test_complete_highlights_when_all_ticked(qapp, tmp_path):

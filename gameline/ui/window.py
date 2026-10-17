@@ -1218,10 +1218,10 @@ class MainWindow(QMainWindow):
         self.sort_box.addItem("Group by subject", "subject")
         self.sort_box.setFixedSize(180, 36)
         self.sort_box.currentIndexChanged.connect(
-            lambda: (self.ctx.set_view(sort=self.sort_box.currentData()), self.refresh(force=True)))
+            lambda: (self.ctx.set_view(sort=self.sort_box.currentData()), self._arrange_cards()))
         self.show_done = QCheckBox("Show completed")
         self.show_done.setObjectName("viewToggle")
-        self.show_done.toggled.connect(lambda on: (self.ctx.set_view(show_completed=on), self.refresh(force=True)))
+        self.show_done.toggled.connect(lambda on: (self.ctx.set_view(show_completed=on), self._arrange_cards()))
         state = self.ctx.store.load()
         for w_ in (self.sort_box, self.show_done):
             w_.blockSignals(True)  # setting saved values isn't a user change
@@ -1423,7 +1423,7 @@ class MainWindow(QMainWindow):
     def _cards_signature(self, state) -> tuple:
         """What forces a rebuild: which deadlines exist and their shape. Ticks,
         collapsing and the clock moving are applied in place instead."""
-        return (state.view_sort, state.show_completed) + tuple(
+        return tuple(
             (d.id, d.fingerprint(), d.estimate is not None and not d.needs_estimate,
              len(d.estimate.chunks) if d.estimate else 0, d.estimate.rationale if d.estimate else "",
              d.id in self.pending, d.completed)
@@ -1431,52 +1431,86 @@ class MainWindow(QMainWindow):
         )
 
     def _rebuild_cards(self, now: datetime) -> None:
-        # Paint once at the end instead of after every removed and added card.
-        self.cards_host.setUpdatesEnabled(False)
+        """Recreate every card (deadlines added, deleted or re-estimated)."""
+        self.cards_host.setUpdatesEnabled(False)  # paint once at the end
         try:
-            self._fill_cards(now)
+            for card in self.card_widgets.values():
+                self.cards.removeWidget(card)
+                card.hide()  # hide now; deleteLater only runs on the next event loop pass
+                card.deleteLater()
+            state = self.ctx.store.load()
+            self.card_widgets = {
+                d.id: DeadlineCard(self, assess(d, state.working_style, now)) for d in state.deadlines
+            }
+            self._arrange_cards(state)
         finally:
             self.cards_host.setUpdatesEnabled(True)
 
-    def _fill_cards(self, now: datetime) -> None:
-        self.card_widgets = {}
-        while self.cards.count():
-            item = self.cards.takeAt(0)
-            if item.widget():
-                item.widget().hide()  # hide now; deleteLater only runs on the next event loop pass
-                item.widget().deleteLater()
+    def replace_card(self, did: str) -> None:
+        """Recreate one card (it was completed or reopened) and re-place it."""
         state = self.ctx.store.load()
-        hidden = 0 if state.show_completed else sum(d.completed for d in state.deadlines)
-        shown = [d for d in state.deadlines if state.show_completed or not d.completed]
-        # Open deadlines first (by due date), completed ones after.
-        shown.sort(key=lambda d: (d.completed, d.due))
-        if not shown:
-            text = "No deadlines yet. Add one, or load the sample week from the Demo tab."
-            if hidden:
-                text = f"All caught up. {hidden} completed deadline{'s are' if hidden != 1 else ' is'} hidden."
-            self.cards.addWidget(label(text, muted=True))
+        d = state.get(did)
+        old = self.card_widgets.get(did)
+        if d is None or old is None:
+            self.refresh(force=True)
+            return
+        self.cards_host.setUpdatesEnabled(False)
+        try:
+            self.cards.removeWidget(old)
+            old.hide()
+            old.deleteLater()
+            self.card_widgets[did] = DeadlineCard(self, assess(d, state.working_style, self.ctx.clock.now()))
+            self._arrange_cards(state)
+        finally:
+            self.cards_host.setUpdatesEnabled(True)
+        self._signature = self._cards_signature(state)  # so the timer doesn't rebuild everything
 
-        def add(d: Deadline) -> None:
-            card = DeadlineCard(self, assess(d, state.working_style, now))
-            self.card_widgets[d.id] = card
-            self.cards.addWidget(card)
+    def _arrange_cards(self, state=None) -> None:
+        """Order, group and show/hide the existing cards for the current view.
+        Cards are only moved, never recreated, so changing the view doesn't flash."""
+        state = state or self.ctx.store.load()
+        self.cards_host.setUpdatesEnabled(False)
+        try:
+            # Take everything out; cards are kept, headers and notes are thrown away.
+            cards = set(self.card_widgets.values())
+            while self.cards.count():
+                w_ = self.cards.takeAt(0).widget()
+                if w_ is not None and w_ not in cards:
+                    w_.hide()
+                    w_.deleteLater()
 
-        if state.view_sort == "subject":
-            groups: dict[str, list[Deadline]] = {}
-            for d in shown:
-                groups.setdefault(subject_of(d.title), []).append(d)
-            # Subjects ordered by their soonest open deadline; "Other" last.
-            order = sorted(groups, key=lambda k: (k == "Other", min((g.completed, g.due) for g in groups[k])))
-            for i, subject in enumerate(order):
-                header = label(subject.upper(), name="h2")
-                header.setContentsMargins(2, 8 if i else 0, 0, 0)
-                self.cards.addWidget(header)
-                for d in groups[subject]:
-                    add(d)
-        else:
-            for d in shown:
-                add(d)
-        self.cards.addStretch(1)
+            hidden = 0 if state.show_completed else sum(d.completed for d in state.deadlines)
+            shown = [d for d in state.deadlines if (state.show_completed or not d.completed) and d.id in self.card_widgets]
+            shown.sort(key=lambda d: (d.completed, d.due))  # open first by due date, completed after
+            for d in state.deadlines:
+                card = self.card_widgets.get(d.id)
+                if card is not None:
+                    card.setVisible(d in shown)
+            if not shown:
+                text = "No deadlines yet. Add one, or load the sample week from the Demo tab."
+                if hidden:
+                    text = f"All caught up. {hidden} completed deadline{'s are' if hidden != 1 else ' is'} hidden."
+                self.cards.addWidget(label(text, muted=True))
+
+            if state.view_sort == "subject":
+                groups: dict[str, list[Deadline]] = {}
+                for d in shown:
+                    groups.setdefault(subject_of(d.title), []).append(d)
+                # Subjects ordered by their soonest open deadline; "Other" last.
+                order = sorted(groups, key=lambda k: (k == "Other", min((g.completed, g.due) for g in groups[k])))
+                for i, subject in enumerate(order):
+                    header = label(subject.upper(), name="h2")
+                    header.setContentsMargins(2, 8 if i else 0, 0, 0)
+                    self.cards.addWidget(header)
+                    for d in groups[subject]:
+                        self.cards.addWidget(self.card_widgets[d.id])
+            else:
+                for d in shown:
+                    self.cards.addWidget(self.card_widgets[d.id])
+            # Hidden (completed) cards stay parented but out of the layout.
+            self.cards.addStretch(1)
+        finally:
+            self.cards_host.setUpdatesEnabled(True)
 
     # actions
 
@@ -1576,7 +1610,8 @@ class MainWindow(QMainWindow):
 
         def finish(check_all: bool) -> None:
             self.ctx.complete_deadline(did, check_all=check_all)
-            self.refresh(force=True)
+            self.replace_card(did)
+            self.refresh()
             note = "" if self.ctx.store.load().show_completed else " Find it under Show completed."
             self.toast(f"Completed “{d.title}”.{note}", "ok")
 
@@ -1596,7 +1631,8 @@ class MainWindow(QMainWindow):
 
     def reopen_deadline(self, did: str) -> None:
         self.ctx.reopen_deadline(did)
-        self.refresh(force=True)
+        self.replace_card(did)
+        self.refresh()
         self.toast("Deadline reopened")
 
     def toggle_collapsed(self, did: str) -> None:

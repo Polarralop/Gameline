@@ -50,6 +50,9 @@ from PySide6.QtWidgets import (
 )
 
 from ..context import AppContext
+from ..llm import BACKENDS
+from ..llm.claude_cli import AccountStatus, account_status, open_login_terminal
+from ..llm.claude_cli import logout as claude_logout
 from ..models import Deadline, Style, WorkingStyle
 from ..planner import DeadlineStatus, assess
 
@@ -105,7 +108,10 @@ class Job(QRunnable):
             result = self.fn()
         except Exception as exc:  # surface errors in the UI instead of dying silently
             result = [f"{exc.__class__.__name__}: {exc}"]
-        self.signals.done.emit(result)
+        try:
+            self.signals.done.emit(result)
+        except RuntimeError:
+            pass  # the receiving window closed while this was running
 
 
 # --- in-window modals --------------------------------------------------------
@@ -421,6 +427,7 @@ class MainWindow(QMainWindow):
         self.busy = False
         self._signature = None
         self.pool = QThreadPool.globalInstance()
+        self.account_checker = account_status  # swapped out in tests
 
         self.setWindowTitle("Gameline")
         self.resize(1152, 648)  # 16:9, wide enough for the sidebar plus content
@@ -468,6 +475,8 @@ class MainWindow(QMainWindow):
     def _go_to(self, index: int, text: str) -> None:
         self.stack.setCurrentIndex(index)
         self.page_title.setText(text)
+        if text == "Preferences":
+            self.check_claude()
 
     # pages
 
@@ -520,6 +529,34 @@ class MainWindow(QMainWindow):
         form.addRow("Extra apps to treat as games", self.tags)
         form.addRow("", label("Steam and Epic games are detected automatically.", muted=True))
         form.addRow("", save)
+
+        # --- AI estimates: backend choice + Claude account status -----------
+        form.addRow(QLabel(""))
+        form.addRow(label("AI ESTIMATES", name="h2"))
+        self.backend_box = QComboBox()
+        for key, text in BACKENDS.items():
+            self.backend_box.addItem(text, key)
+        self.backend_box.currentIndexChanged.connect(self._backend_changed)
+        form.addRow("Estimate with", self.backend_box)
+
+        self.claude_btn = QPushButton("Checking Claude…")
+        self.claude_btn.setObjectName("claudeAccount")
+        self.claude_btn.clicked.connect(self.claude_account_clicked)
+        self.claude_status = label("", muted=True, wrap=True)
+        account = QVBoxLayout()
+        account.setSpacing(4)
+        account.addWidget(self.claude_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        account.addWidget(self.claude_status)
+        form.addRow("Claude account", account)
+        form.addRow("", label(
+            "The Claude subscription option runs Claude Code on this Mac. It's for your own use only; "
+            "a version shared with others needs an API key.", muted=True, wrap=True))
+
+        self._claude_checking = False
+        self._login_polls = 0
+        self.login_timer = QTimer(self)
+        self.login_timer.setInterval(6000)
+        self.login_timer.timeout.connect(self._poll_login)
         self._load_settings()
         return tab
 
@@ -640,6 +677,9 @@ class MainWindow(QMainWindow):
         self.daily_hours.setValue(ws.daily_work_hours)
         self.max_minutes.setValue(ws.max_gaming_minutes)
         self.tags.setText(", ".join(state.tagged_games))
+        self.backend_box.blockSignals(True)
+        self.backend_box.setCurrentIndex(max(0, self.backend_box.findData(self.ctx.backend_name())))
+        self.backend_box.blockSignals(False)
 
     def save_settings(self) -> None:
         style = WorkingStyle(
@@ -650,6 +690,81 @@ class MainWindow(QMainWindow):
         self.ctx.save_settings(style, self.tags.text().split(","))
         self.statusBar().showMessage("Settings saved", 2500)
         self.refresh(force=True)
+
+    # Claude account
+
+    def _backend_changed(self) -> None:
+        self.ctx.set_backend(self.backend_box.currentData())
+        self.statusBar().showMessage(f"Estimates now use: {self.backend_box.currentText()}", 3000)
+
+    def check_claude(self) -> None:
+        """Ask the CLI for login status (plus a tiny test call) off the GUI thread."""
+        if self._claude_checking:
+            return
+        self._claude_checking = True
+        self._show_claude(None)
+        self.pool.start(Job(self.account_checker, self._claude_checked))
+
+    def _claude_checked(self, status) -> None:
+        self._claude_checking = False
+        if isinstance(status, AccountStatus):
+            self._show_claude(status)
+            if status.ok and self.login_timer.isActive():
+                self.login_timer.stop()
+                self.statusBar().showMessage("Logged in to Claude", 4000)
+        else:  # Job returns a list of error strings on failure
+            self._show_claude(AccountStatus(installed=True, message="; ".join(status)))
+
+    def _show_claude(self, status: AccountStatus | None) -> None:
+        self.claude_account = status
+        btn = self.claude_btn
+        if status is None:
+            text, tone, enabled = ("Waiting for login…" if self.login_timer.isActive() else "Checking Claude…"), "idle", False
+        elif not status.installed:
+            text, tone, enabled = "Claude Code not installed", "idle", False
+        elif status.ok:
+            text, tone, enabled = "✓  Logged in to Claude", "ok", True
+        else:
+            text, tone, enabled = "Log in to Claude", "action", True
+        btn.setText(text)
+        btn.setEnabled(enabled)
+        btn.setProperty("tone", tone)
+        btn.style().unpolish(btn)
+        btn.style().polish(btn)
+        if status is None:
+            self.claude_status.setText("")
+        elif status.ok:
+            self.claude_status.setText(status.label + ". Click to log out.")
+        else:
+            show = status.message and status.installed and "expired" not in status.label.lower()
+            detail = f" ({status.message})" if show else ""
+            self.claude_status.setText(status.label + detail)
+
+    def claude_account_clicked(self) -> None:
+        status = self.claude_account
+        if status and status.ok:
+            def do_logout() -> None:
+                self.pool.start(Job(lambda: (claude_logout(), account_status(verify=False))[1], self._claude_checked))
+
+            ConfirmModal(
+                self.centralWidget(),
+                "Log out of Claude",
+                "Log Claude Code on this Mac out of your account?",
+                "This also logs out the claude command in your terminal.",
+                "Log out",
+                do_logout,
+            )
+            return
+        open_login_terminal()
+        self._login_polls = 0
+        self.login_timer.start()
+        self._show_claude(None)
+
+    def _poll_login(self) -> None:
+        self._login_polls += 1
+        if self._login_polls > 30:  # about 3 minutes
+            self.login_timer.stop()
+        self.check_claude()
 
     def seed_demo(self) -> None:
         self.ctx.seed_demo_data()

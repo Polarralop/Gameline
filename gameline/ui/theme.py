@@ -41,6 +41,8 @@ def stylesheet() -> str:
     QLineEdit, QPlainTextEdit, QDateTimeEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
         background: {c['card']}; border: 1px solid {c['line']}; border-radius: 8px; padding: 5px 8px; }}
     QFrame#modal {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 14px; }}
+    QPushButton#claudeAccount[tone="ok"] {{ background: {c['ok_bg']}; color: {c['ok']}; }}
+    QPushButton#claudeAccount[tone="idle"] {{ background: {c['line']}; color: {c['muted']}; }}
     QLabel#warning {{ color: {c['risk']}; font-size: 12px; }}
     QPushButton[danger="true"] {{ background: {c['risk']}; }}
     QLabel#modalTitle {{ font-size: 18px; font-weight: 700; }}

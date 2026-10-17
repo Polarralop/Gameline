@@ -11,7 +11,7 @@ from .clock import Clock
 from .demo.fake_game import FAKE_GAME_NAME, build
 from .detectors import GameDetector, default_detectors
 from .estimator import estimate_pending
-from .llm import get_llm
+from .llm import default_backend, get_llm
 from .models import Chunk, Deadline, Estimate, Style, WorkingStyle
 from .planner import at_risk_deadlines
 from .store import State, Store
@@ -22,10 +22,13 @@ DEMO_SPEED = 360.0  # 1 real second = 6 app minutes
 
 
 class AppContext:
-    def __init__(self, store: Store | None = None) -> None:
+    def __init__(self, store: Store | None = None, llm=None) -> None:
         self.store = store or Store()
         self.clock = Clock()
+        # A fixed llm (tests) wins; otherwise it follows the Preferences choice.
+        self._fixed_llm = llm
         self._llm = None
+        self._llm_name = None
         self._fake_game: subprocess.Popen | None = None
         self._lock = threading.Lock()
 
@@ -36,9 +39,20 @@ class AppContext:
 
     @property
     def llm(self):
-        if self._llm is None:
-            self._llm = get_llm()
+        if self._fixed_llm is not None:
+            return self._fixed_llm
+        name = self.backend_name()
+        if self._llm is None or name != self._llm_name:
+            self._llm, self._llm_name = get_llm(name), name
         return self._llm
+
+    def backend_name(self) -> str:
+        return self.store.load().llm_backend or default_backend()
+
+    def set_backend(self, name: str) -> None:
+        state = self.store.load()
+        state.llm_backend = name
+        self.store.save(state)
 
     def save_and_estimate(self, state: State) -> list[str]:
         """Persist, then estimate any new or edited deadlines. Returns error messages."""
@@ -47,7 +61,8 @@ class AppContext:
             estimate_pending(state, self.llm, self.clock.now())
         except Exception as exc:
             log.exception("Estimation failed")
-            errors.append(f"Estimate failed ({exc.__class__.__name__}); will retry on next save.")
+            hint = " Log in to Claude in Preferences." if getattr(exc, "auth", False) else ""
+            errors.append(f"Estimate failed: {exc}.{hint} It will retry on the next save.")
         self.store.save(state)
         return errors
 

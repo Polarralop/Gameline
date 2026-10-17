@@ -24,6 +24,8 @@ class State:
     working_style: WorkingStyle = field(default_factory=WorkingStyle)
     # App or process names the user tagged as games.
     tagged_games: list[str] = field(default_factory=list)
+    # LLM backend chosen in Preferences ("" = use the GAMELINE_LLM default).
+    llm_backend: str = ""
 
     def get(self, deadline_id: str) -> Deadline | None:
         return next((d for d in self.deadlines if d.id == deadline_id), None)
@@ -33,6 +35,7 @@ class State:
             "deadlines": [d.to_dict() for d in self.deadlines],
             "working_style": self.working_style.to_dict(),
             "tagged_games": self.tagged_games,
+            "llm_backend": self.llm_backend,
         }
 
     @classmethod
@@ -41,6 +44,7 @@ class State:
             deadlines=[Deadline.from_dict(x) for x in d.get("deadlines", [])],
             working_style=WorkingStyle.from_dict(d.get("working_style", {})),
             tagged_games=list(d.get("tagged_games", [])),
+            llm_backend=d.get("llm_backend", ""),
         )
 
 

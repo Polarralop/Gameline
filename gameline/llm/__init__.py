@@ -1,4 +1,9 @@
-"""LLM backends. get_llm() picks one from the GAMELINE_LLM env var."""
+"""LLM backends. get_llm() picks one by name, defaulting to the GAMELINE_LLM env var.
+
+claude      Claude API (ANTHROPIC_API_KEY), the default
+claude-cli  local Claude Code CLI on your Claude subscription (personal use only)
+stub        offline keyword guesses, for tests and demos without network
+"""
 
 from __future__ import annotations
 
@@ -11,12 +16,23 @@ from .base import EstimatorLLM
 load_dotenv()
 
 
+BACKENDS = {"claude": "Claude API key", "claude-cli": "Claude subscription", "stub": "Offline (rough guesses)"}
+
+
+def default_backend() -> str:
+    return os.getenv("GAMELINE_LLM", "claude").lower()
+
+
 def get_llm(name: str | None = None) -> EstimatorLLM:
-    name = (name or os.getenv("GAMELINE_LLM", "claude")).lower()
+    name = (name or default_backend()).lower()
     if name == "claude":
         from .claude import ClaudeLLM
 
         return ClaudeLLM()
+    if name == "claude-cli":
+        from .claude_cli import ClaudeCLILLM
+
+        return ClaudeCLILLM()
     if name == "stub":
         from .stub import StubLLM
 

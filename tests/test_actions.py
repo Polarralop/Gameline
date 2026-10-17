@@ -7,9 +7,7 @@ from gameline.store import Store
 
 
 def make(tmp_path):
-    ctx = AppContext(Store(tmp_path / "s.json"))
-    ctx._llm = StubLLM()
-    return ctx
+    return AppContext(Store(tmp_path / "s.json"), llm=StubLLM())
 
 
 def test_add_edit_delete_deadline(tmp_path):

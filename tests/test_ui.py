@@ -7,6 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
 from gameline.context import AppContext  # noqa: E402
+from gameline.llm.claude_cli import AccountStatus  # noqa: E402
 from gameline.store import Store  # noqa: E402
 from gameline.ui.window import ConfirmModal, DeadlineModal, MainWindow  # noqa: E402
 
@@ -45,6 +46,7 @@ def test_window_renders_seeded_week(qapp, tmp_path):
 
 def test_sidebar_switches_pages_and_collapses(qapp, tmp_path):
     w = MainWindow(AppContext(Store(tmp_path / "s.json")), lambda: [])
+    w.account_checker = lambda: AccountStatus(installed=False)  # don't call the real CLI
     assert w.page_title.text() == "Deadlines"
     w.sidebar.items[1][0].click()
     assert w.stack.currentIndex() == 1 and w.page_title.text() == "Demo"
@@ -67,3 +69,13 @@ def test_delete_asks_in_modal_then_deletes(qapp, tmp_path):
     assert len(ctx.store.load().deadlines) == 2  # nothing deleted until confirmed
     modal.confirm_btn.click()
     assert len(ctx.store.load().deadlines) == 1
+
+
+def test_claude_button_reflects_status(qapp, tmp_path):
+    w = MainWindow(AppContext(Store(tmp_path / "s.json")), lambda: [])
+    w._show_claude(AccountStatus(installed=True, logged_in=True, working=True, email="me@x.ca", plan="pro"))
+    assert "Logged in" in w.claude_btn.text() and w.claude_btn.property("tone") == "ok"
+    w._show_claude(AccountStatus(installed=True, logged_in=True, working=False, message="OAuth session expired"))
+    assert w.claude_btn.text() == "Log in to Claude" and "Session expired" in w.claude_status.text()
+    w._show_claude(AccountStatus(installed=False))
+    assert not w.claude_btn.isEnabled()

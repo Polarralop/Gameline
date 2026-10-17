@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QStackedWidget,
+    QStyledItemDelegate,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -59,7 +60,7 @@ from ..llm.claude_cli import AccountStatus, account_status, open_login_terminal
 from ..llm.claude_cli import logout as claude_logout
 from ..models import Deadline, NotifyLevel, Style, WorkingStyle
 from ..planner import DeadlineStatus, assess
-from .theme import colors, icon_path
+from .theme import colors, dropdown_list_qss, icon_path
 
 NOTIFY_LABELS = {
     NotifyLevel.OFF: "No notifications",
@@ -107,11 +108,32 @@ def style_calendar(cal: QCalendarWidget) -> None:
     cal.setMinimumSize(300, 250)
 
 
+class _DropdownRowDelegate(QStyledItemDelegate):
+    """Fixed row height, so the list lays out the same before and after styling."""
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        return QSize(size.width(), 32)
+
+
 def styled_combo() -> QComboBox:
     """A combo box whose popup list follows the stylesheet (the default view
     on macOS ignores per-item styling)."""
     box = QComboBox()
-    box.setView(QListView())
+    view = QListView()
+    view.setStyleSheet(dropdown_list_qss())
+    box.setView(view)
+    # The default combo delegate draws items like menu entries and ignores the
+    # stylesheet; the standard delegate honours ::item padding, height and hover.
+    box.setItemDelegate(_DropdownRowDelegate(box))
+    # The list sits inside a popup window that paints its own square frame and
+    # background. Make that window frameless and see-through, so only the
+    # rounded list (styled in theme.py) shows.
+    popup = box.view().window()
+    popup.setWindowFlags(popup.windowFlags() | Qt.WindowType.FramelessWindowHint
+                         | Qt.WindowType.NoDropShadowWindowHint)
+    popup.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    popup.setStyleSheet("QComboBoxPrivateContainer { background: transparent; border: none; }")
     return box
 
 

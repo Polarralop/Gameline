@@ -65,6 +65,19 @@ def palette() -> QPalette:
     return pal
 
 
+def dropdown_list_qss() -> str:
+    """Styles for a combo box's popup list. Applied to the list itself (see
+    styled_combo) because the app-wide sheet doesn't reach into the popup window."""
+    c = colors()
+    return f"""
+    QListView {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 8px;
+        padding: 4px; outline: 0; color: {c['ink']}; }}
+    QListView::item {{ padding: 0 10px; border-radius: 6px; }}
+    QListView::item:hover {{ background: {c['hover']}; }}
+    QListView::item:selected {{ background: {c['accent']}; color: white; }}
+    """
+
+
 def stylesheet() -> str:
     c = colors()
     chevron = _chevron(c["muted"])
@@ -97,11 +110,6 @@ def stylesheet() -> str:
         subcontrol-origin: padding; subcontrol-position: center right; width: 28px; border: 0; }}
     QComboBox::down-arrow, QDateTimeEdit::down-arrow {{ image: url({chevron}); width: 12px; height: 12px; }}
     QComboBox {{ combobox-popup: 0; }}  /* drop the list below the field, not over it */
-    QComboBox QAbstractItemView {{ background: {c['card']}; border: 1px solid {c['line']};
-        border-radius: 8px; padding: 4px; outline: 0; }}
-    QComboBox QAbstractItemView::item {{ min-height: 30px; padding: 0 10px; border-radius: 6px; color: {c['ink']}; }}
-    QComboBox QAbstractItemView::item:hover {{ background: {c['hover']}; }}
-    QComboBox QAbstractItemView::item:selected {{ background: {c['accent']}; color: white; }}
     QCalendarWidget QWidget#qt_calendar_navigationbar {{ background: {c['card']}; border-bottom: 1px solid {c['line']}; }}
     QCalendarWidget QToolButton {{ background: transparent; color: {c['ink']}; font-weight: 600;
         border: 0; border-radius: 6px; padding: 4px 8px; }}

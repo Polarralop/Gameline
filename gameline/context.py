@@ -145,6 +145,21 @@ class AppContext:
             state.show_completed = show_completed
         self.store.save(state)
 
+    def finish_onboarding(self, style: WorkingStyle | None = None) -> None:
+        """Save the onboarding answers (if any) and don't show it again."""
+        with self.store.lock:
+            state = self.store.load()
+            if style is not None:
+                style.repeat_minutes = state.working_style.repeat_minutes
+                state.working_style = style
+            state.onboarded = True
+            self.store.save(state)
+
+    def reset_onboarding(self) -> None:
+        state = self.store.load()
+        state.onboarded = False
+        self.store.save(state)
+
     # --- danger zone -------------------------------------------------------
 
     def delete_all_deadlines(self) -> int:

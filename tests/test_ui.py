@@ -309,3 +309,45 @@ def test_collapse_and_expand_all(qapp, tmp_path):
     w.fold_btn.click()
     assert all(w.card_widgets[i].details.isVisibleTo(w) for i in ids)
     assert w.card_widgets == before  # folded in place, nothing rebuilt
+
+
+def test_onboarding_flow(qapp, tmp_path):
+    from gameline.models import NotifyLevel, Style
+    from gameline.ui.onboarding import OnboardingModal
+    from gameline.ui.window import ConfirmModal
+
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    assert not ctx.store.load().onboarded  # fresh install
+    w = MainWindow(ctx, lambda: [])
+    m = w.show_onboarding()
+    assert isinstance(m, OnboardingModal) and m.pages.currentIndex() == 0
+    m.start_btn.click()
+    assert m.pages.currentIndex() == 1 and m.dots[0].property("current")
+    m.style_slider.slider.setValue(2)
+    m.hours.setValue(3)
+    m.next_btn.click()
+    m.limit.setValue(90)
+    m.games.input.setText("Minecraft")
+    m.games._add()
+    m.back_btn.click()
+    assert m.pages.currentIndex() == 1  # can go back
+    m.next_btn.click()
+    m.next_btn.click()
+    assert m.pages.currentIndex() == 3
+    m.level_slider.slider.setValue(2)  # Interrupting
+    m.next_btn.click()
+    assert m.pages.currentIndex() == 3  # waits for the warning to be accepted
+    w.centralWidget().findChildren(ConfirmModal)[-1].confirm_btn.click()
+    assert m.pages.currentIndex() == 4
+    s = ctx.store.load()
+    assert s.onboarded and s.tagged_games == ["Minecraft"]
+    ws = s.working_style
+    assert (ws.style, ws.daily_work_hours, ws.max_gaming_minutes, ws.notify_level) == (
+        Style.LONG_SESSIONS, 3, 90, NotifyLevel.INTERRUPT)
+
+
+def test_existing_users_skip_onboarding(tmp_path):
+    from gameline.store import State
+
+    assert State.from_dict({"deadlines": [{"id": "a", "title": "x", "due": "2030-01-01T00:00"}]}).onboarded
+    assert not State.from_dict({}).onboarded

@@ -179,6 +179,18 @@ def stylesheet() -> str:
     QPushButton#foldAll {{ background: transparent; color: {c['muted']}; border: 1px solid {c['line']};
         padding: 0 12px; font-weight: 500; }}
     QPushButton#foldAll:hover {{ color: {c['ink']}; background: {c['hover']}; }}
+    QLabel#bigTick {{ color: {c['ok']}; font-size: 40px; font-weight: 700; }}
+    QLabel#welcomeTitle {{ font-size: 24px; font-weight: 700; }}
+    QLabel#dot {{ background: {c['line']}; border-radius: 4px; }}
+    QLabel#dot[current="true"] {{ background: {c['accent']}; }}
+    QLabel#stop {{ color: {c['muted']}; font-size: 13px; }}
+    QLabel#stop[current="true"] {{ color: {c['ink']}; font-weight: 600; }}
+    QSlider#stepSlider::groove:horizontal {{ height: 6px; background: {c['line']}; border-radius: 3px; }}
+    QSlider#stepSlider::sub-page:horizontal {{ background: {c['accent']}; border-radius: 3px; }}
+    QSlider#stepSlider::handle:horizontal {{ background: white; border: 2px solid {c['accent']};
+        width: 18px; height: 18px; margin: -8px 0; border-radius: 11px; }}
+    QPushButton#linkButton {{ background: transparent; color: {c['muted']}; font-weight: 500; padding: 4px 8px; }}
+    QPushButton#linkButton:hover {{ color: {c['ink']}; }}
     QPushButton#secondary {{ background: transparent; color: {c['accent']}; border: 1px solid {c['accent']}; }}
     QPushButton#secondary:hover {{ background: {c['hover']}; }}
     QScrollArea#proposalList, QWidget#proposalList {{ background: transparent; }}

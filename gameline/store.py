@@ -51,6 +51,8 @@ class State:
     show_completed: bool = False
     # Finished gaming sessions, for weekly/monthly recaps.
     sessions: list[PlayedSession] = field(default_factory=list)
+    # Whether the first-launch onboarding has been completed (or skipped).
+    onboarded: bool = False
 
     def get(self, deadline_id: str) -> Deadline | None:
         return next((d for d in self.deadlines if d.id == deadline_id), None)
@@ -64,6 +66,7 @@ class State:
             "view_sort": self.view_sort,
             "show_completed": self.show_completed,
             "sessions": [x.to_dict() for x in self.sessions],
+            "onboarded": self.onboarded,
         }
 
     @classmethod
@@ -76,6 +79,8 @@ class State:
             view_sort=d.get("view_sort", "due"),
             show_completed=bool(d.get("show_completed", False)),
             sessions=[PlayedSession.from_dict(x) for x in d.get("sessions", [])],
+            # Saved before onboarding existed: anyone with deadlines is already set up.
+            onboarded=bool(d.get("onboarded", bool(d.get("deadlines")))),
         )
 
 

@@ -98,6 +98,7 @@ class GamelineApp:
 
         self.watcher.start()
         self.show_window()
+        QTimer.singleShot(300, self.window.maybe_onboard)
 
     def playing(self) -> list[str]:
         return [s.game.name for s in list(self.watcher.sessions.values())]

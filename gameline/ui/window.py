@@ -1419,8 +1419,33 @@ class MainWindow(QMainWindow):
             row.addWidget(b)
         row.addStretch(1)
         lay.addLayout(row)
+        lay.addSpacing(20)
+        lay.addWidget(label("ONBOARDING", name="h2"))
+        lay.addWidget(label("Show the first-launch setup again. Your answers replace the current preferences; "
+                            "deadlines are kept.", muted=True, wrap=True))
+        replay = QPushButton("Replay onboarding")
+        replay.setObjectName("secondary")
+        replay.clicked.connect(lambda: self.show_onboarding())
+        lay.addWidget(replay, 0, Qt.AlignmentFlag.AlignLeft)
         lay.addStretch(1)
         return tab
+
+    # onboarding
+
+    def maybe_onboard(self) -> None:
+        """Show onboarding on first launch (nothing set up yet)."""
+        if not self.ctx.store.load().onboarded:
+            self.show_onboarding()
+
+    def show_onboarding(self):
+        from .onboarding import OnboardingModal  # local import: onboarding uses helpers from this module
+
+        self.sidebar.select(0)
+        return OnboardingModal(self, self.add_deadline, lambda: self.bulk_add())
+
+    def after_onboarding(self) -> None:
+        self._load_settings()
+        self.refresh(force=True)
 
     # refresh
 
@@ -1777,6 +1802,8 @@ class MainWindow(QMainWindow):
             self.collapsed.clear()
             self._load_settings()
             self.refresh(force=True)
+            if what == "everything":
+                QTimer.singleShot(400, self.maybe_onboard)  # a fresh start gets the welcome again
 
         return ConfirmModal(self.centralWidget(), heading, message,
                             "This can't be reversed!", "Delete", wipe)

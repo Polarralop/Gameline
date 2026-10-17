@@ -61,7 +61,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..context import AppContext
-from ..llm import BACKENDS
+from ..llm import available_backends, subscription_enabled
 from ..llm.claude_cli import AccountStatus, account_status, cached_status, forget_status, open_login_terminal
 from ..llm.claude_cli import logout as claude_logout
 from ..models import Deadline, NotifyLevel, Style, WorkingStyle, subject_of
@@ -1379,7 +1379,7 @@ class MainWindow(QMainWindow):
         form.addRow(QLabel(""))
         form.addRow(label("AI ESTIMATES", name="h2"))
         self.backend_box = styled_combo()
-        for key, text in BACKENDS.items():
+        for key, text in available_backends().items():
             self.backend_box.addItem(text, key)
         self.backend_box.currentIndexChanged.connect(self._backend_changed)
         form.addRow("Estimate with", self.backend_box)
@@ -1402,6 +1402,10 @@ class MainWindow(QMainWindow):
         sr.addWidget(recheck)
         sr.addStretch(1)
         form.addRow("", status_row)
+        if not subscription_enabled():
+            # No subscription option offered, so no Claude account to show.
+            for w_ in (self.claude_btn, status_row):
+                form.setRowVisible(w_, False)
 
         # --- danger zone ------------------------------------------------------
         form.addRow(QLabel(""))

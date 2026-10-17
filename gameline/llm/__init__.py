@@ -30,8 +30,21 @@ BACKENDS = {
 }
 
 
+def subscription_enabled() -> bool:
+    """The Claude subscription backend is for the developer's own machine only:
+    apps given to other people shouldn't offer claude.ai login, so it's hidden
+    unless GAMELINE_ENABLE_CLAUDE_SUBSCRIPTION=1 is set (e.g. in .env)."""
+    return os.getenv("GAMELINE_ENABLE_CLAUDE_SUBSCRIPTION", "").strip().lower() in ("1", "true", "yes")
+
+
+def available_backends() -> dict[str, str]:
+    """The options to offer in the UI."""
+    return {k: v for k, v in BACKENDS.items() if k != "claude-cli" or subscription_enabled()}
+
+
 def default_backend() -> str:
-    return os.getenv("GAMELINE_LLM", "claude").lower()
+    name = os.getenv("GAMELINE_LLM", "claude").lower()
+    return name if name in available_backends() else "claude"
 
 
 def get_llm(name: str | None = None) -> EstimatorLLM:

@@ -311,7 +311,8 @@ def test_collapse_and_expand_all(qapp, tmp_path):
     assert w.card_widgets == before  # folded in place, nothing rebuilt
 
 
-def test_onboarding_flow(qapp, tmp_path):
+def test_onboarding_flow(qapp, tmp_path, monkeypatch):
+    monkeypatch.setenv("GAMELINE_ENABLE_CLAUDE_SUBSCRIPTION", "1")
     from gameline.models import NotifyLevel, Style
     from gameline.ui.onboarding import OnboardingModal
     from gameline.ui.window import ConfirmModal
@@ -361,7 +362,8 @@ def test_existing_users_skip_onboarding(tmp_path):
     assert not State.from_dict({}).onboarded
 
 
-def test_claude_only_checked_for_subscription(qapp, tmp_path):
+def test_claude_only_checked_for_subscription(qapp, tmp_path, monkeypatch):
+    monkeypatch.setenv("GAMELINE_ENABLE_CLAUDE_SUBSCRIPTION", "1")
     ctx = AppContext(Store(tmp_path / "s.json"))
     ctx.set_backend("gemini")
     w = MainWindow(ctx, lambda: [])
@@ -371,3 +373,13 @@ def test_claude_only_checked_for_subscription(qapp, tmp_path):
     assert calls == [] and w.claude_btn.text() == "Not verified"
     w.backend_box.setCurrentIndex(w.backend_box.findData("claude-cli"))
     assert w._claude_checking or calls  # switching to the subscription checks
+
+
+def test_subscription_hidden_by_default(qapp, tmp_path, monkeypatch):
+    monkeypatch.delenv("GAMELINE_ENABLE_CLAUDE_SUBSCRIPTION", raising=False)
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    ctx.set_backend("claude-cli")  # e.g. saved earlier on a developer machine
+    w = MainWindow(ctx, lambda: [])
+    assert w.backend_box.findData("claude-cli") == -1
+    assert not w.claude_btn.isVisibleTo(w)
+    assert ctx.backend_name() != "claude-cli"  # falls back to an offered option

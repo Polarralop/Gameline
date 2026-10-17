@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..llm import BACKENDS
+from ..llm import available_backends
 from ..llm.claude_cli import AccountStatus, account_status, cached_status, forget_status, open_login_terminal
 from ..models import NotifyLevel, Style, WorkingStyle
 from .window import ICONS_DIR, ConfirmModal, GameList, Job, Modal, label, styled_combo
@@ -282,7 +282,7 @@ class OnboardingModal(Modal):
         page, lay = self._page("Who should plan your deadlines?",
                                "Gameline asks an AI to estimate each deadline and split it into work blocks.")
         self.ai_box = styled_combo()
-        for key, text in BACKENDS.items():
+        for key, text in available_backends().items():
             self.ai_box.addItem(text, key)
         self.ai_box.setFixedHeight(36)
         self.ai_box.setCurrentIndex(max(0, self.ai_box.findData(self.ctx.backend_name())))

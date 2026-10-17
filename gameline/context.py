@@ -11,7 +11,7 @@ from .clock import Clock
 from .demo.fake_game import FAKE_GAME_NAME, build
 from .detectors import GameDetector, default_detectors
 from .estimator import estimate
-from .llm import default_backend, get_llm
+from .llm import available_backends, default_backend, get_llm
 from .models import Chunk, Deadline, Estimate, NotifyLevel, Style, WorkingStyle
 from .planner import at_risk_deadlines
 from .store import State, Store
@@ -47,7 +47,10 @@ class AppContext:
         return self._llm
 
     def backend_name(self) -> str:
-        return self.store.load().llm_backend or default_backend()
+        """The saved choice, unless it's no longer offered (the subscription
+        option when hidden), then the default."""
+        saved = self.store.load().llm_backend
+        return saved if saved in available_backends() else default_backend()
 
     def set_backend(self, name: str) -> None:
         state = self.store.load()

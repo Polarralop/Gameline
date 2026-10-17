@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
+
 from .base import EstimatorLLM
+
+load_dotenv()
 
 
 def get_llm(name: str | None = None) -> EstimatorLLM:

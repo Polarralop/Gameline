@@ -24,7 +24,7 @@ SCHEMA = {
     "type": "object",
     "properties": {
         "effort_hours": {"type": "number", "description": "Total hours of focused work."},
-        "importance": {"type": "integer", "minimum": 1, "maximum": 5},
+        "importance": {"type": "integer", "description": "1 (low) to 5 (critical)."},
         "rationale": {"type": "string", "description": "One sentence on the estimate."},
         "chunks": {
             "type": "array",
@@ -36,10 +36,12 @@ SCHEMA = {
                     "start": {"type": "string", "description": "ISO 8601 local datetime."},
                 },
                 "required": ["title", "hours"],
+                "additionalProperties": False,
             },
         },
     },
     "required": ["effort_hours", "importance", "chunks"],
+    "additionalProperties": False,
 }
 
 _CHUNK_HINT = {

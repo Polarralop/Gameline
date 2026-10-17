@@ -27,8 +27,9 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QColor, QIcon, QKeySequence, QPainter, QPen, QShortcut
+from PySide6.QtGui import QColor, QIcon, QKeySequence, QPainter, QPen, QShortcut, QTextCharFormat
 from PySide6.QtWidgets import (
+    QCalendarWidget,
     QCheckBox,
     QComboBox,
     QDateTimeEdit,
@@ -39,6 +40,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListView,
     QMainWindow,
     QPlainTextEdit,
     QProgressBar,
@@ -79,6 +81,38 @@ def bring_app_to_front() -> None:
         ObjCClass("NSApplication").sharedApplication.activateIgnoringOtherApps_(True)
     except Exception:
         pass
+
+
+def style_calendar(cal: QCalendarWidget) -> None:
+    """Match the date picker to the theme: no red weekends, quieter weekday
+    headers, chevron arrows, and no week-number column."""
+    c = colors()
+    cal.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
+    cal.setGridVisible(False)
+    plain = QTextCharFormat()
+    plain.setForeground(QColor(c["ink"]))
+    # Same format for every weekday, so weekend headers match the rest too.
+    for day in Qt.DayOfWeek:
+        cal.setWeekdayTextFormat(day, plain)
+    header = QTextCharFormat()
+    header.setForeground(QColor(c["muted"]))
+    header.setBackground(QColor(c["card"]))
+    cal.setHeaderTextFormat(header)
+    cal.setHorizontalHeaderFormat(QCalendarWidget.HorizontalHeaderFormat.ShortDayNames)
+    for name, icon in (("qt_calendar_prevmonth", "chevron-left"), ("qt_calendar_nextmonth", "chevron-right")):
+        btn = cal.findChild(QToolButton, name)
+        if btn:
+            btn.setIcon(QIcon(icon_path(icon, c["ink"])))
+            btn.setIconSize(QSize(14, 14))
+    cal.setMinimumSize(300, 250)
+
+
+def styled_combo() -> QComboBox:
+    """A combo box whose popup list follows the stylesheet (the default view
+    on macOS ignores per-item styling)."""
+    box = QComboBox()
+    box.setView(QListView())
+    return box
 
 
 def label(text: str = "", *, name: str | None = None, muted: bool = False, wrap: bool = False) -> QLabel:
@@ -234,6 +268,7 @@ class DeadlineModal(Modal):
         self.due = QDateTimeEdit(to_qdt(deadline.due if deadline else now.replace(hour=23, minute=59)))
         self.due.setCalendarPopup(True)
         self.due.setDisplayFormat("ddd MMM d, h:mm AP")
+        style_calendar(self.due.calendarWidget())
         self.notes = QPlainTextEdit(deadline.notes if deadline else "")
         self.notes.setPlaceholderText("Details help the estimate, e.g. 4 coding questions on linked lists")
         self.notes.setFixedHeight(80)
@@ -915,14 +950,14 @@ class MainWindow(QMainWindow):
         form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         form.setHorizontalSpacing(24)
         form.setVerticalSpacing(12)
-        self.style_box = QComboBox()
+        self.style_box = styled_combo()
         for st, text in STYLE_LABELS.items():
             self.style_box.addItem(text, st)
         self.daily_hours = QDoubleSpinBox()
         self.daily_hours.setRange(0.5, 16)
         self.daily_hours.setSingleStep(0.5)
         self.daily_hours.setSuffix(" h")
-        self.notify_box = QComboBox()
+        self.notify_box = styled_combo()
         for level, text in NOTIFY_LABELS.items():
             self.notify_box.addItem(text, level)
         self.notify_box.currentIndexChanged.connect(self._notify_changed)
@@ -955,7 +990,7 @@ class MainWindow(QMainWindow):
         # --- AI estimates: backend choice + Claude account status -----------
         form.addRow(QLabel(""))
         form.addRow(label("AI ESTIMATES", name="h2"))
-        self.backend_box = QComboBox()
+        self.backend_box = styled_combo()
         for key, text in BACKENDS.items():
             self.backend_box.addItem(text, key)
         self.backend_box.currentIndexChanged.connect(self._backend_changed)

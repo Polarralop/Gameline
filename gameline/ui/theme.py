@@ -26,6 +26,7 @@ def colors() -> dict[str, str]:
 ICON_PATHS = {
     "chevron-down": "M2.5 4.5 6 8l3.5-3.5",
     "chevron-right": "M4.5 2.5 8 6l-3.5 3.5",
+    "chevron-left": "M7.5 2.5 4 6l3.5 3.5",
     "check": "M2.6 6.2 5 8.6 9.6 3.6",
 }
 
@@ -95,8 +96,22 @@ def stylesheet() -> str:
     QComboBox::drop-down, QDateTimeEdit::drop-down {{
         subcontrol-origin: padding; subcontrol-position: center right; width: 28px; border: 0; }}
     QComboBox::down-arrow, QDateTimeEdit::down-arrow {{ image: url({chevron}); width: 12px; height: 12px; }}
+    QComboBox {{ combobox-popup: 0; }}  /* drop the list below the field, not over it */
     QComboBox QAbstractItemView {{ background: {c['card']}; border: 1px solid {c['line']};
-        selection-background-color: {c['accent']}; selection-color: white; padding: 4px; outline: 0; }}
+        border-radius: 8px; padding: 4px; outline: 0; }}
+    QComboBox QAbstractItemView::item {{ min-height: 30px; padding: 0 10px; border-radius: 6px; color: {c['ink']}; }}
+    QComboBox QAbstractItemView::item:hover {{ background: {c['hover']}; }}
+    QComboBox QAbstractItemView::item:selected {{ background: {c['accent']}; color: white; }}
+    QCalendarWidget QWidget#qt_calendar_navigationbar {{ background: {c['card']}; border-bottom: 1px solid {c['line']}; }}
+    QCalendarWidget QToolButton {{ background: transparent; color: {c['ink']}; font-weight: 600;
+        border: 0; border-radius: 6px; padding: 4px 8px; }}
+    QCalendarWidget QToolButton:hover {{ background: {c['hover']}; }}
+    QCalendarWidget QToolButton::menu-indicator {{ image: none; width: 0; }}
+    QCalendarWidget QSpinBox {{ background: {c['card']}; border: 0; padding: 0 4px; min-height: 0; }}
+    QCalendarWidget QMenu {{ background: {c['card']}; border: 1px solid {c['line']}; }}
+    QCalendarWidget QAbstractItemView {{ background: {c['card']}; color: {c['ink']}; outline: 0;
+        selection-background-color: {c['accent']}; selection-color: white; }}
+    QCalendarWidget QAbstractItemView:disabled {{ color: {c['muted']}; }}
     QFrame#modal {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 14px; }}
     QPushButton#claudeAccount[tone="ok"] {{ background: {c['ok_bg']}; color: {c['ok']}; }}
     QPushButton#claudeAccount[tone="idle"] {{ background: {c['line']}; color: {c['muted']}; }}

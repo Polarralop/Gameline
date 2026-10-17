@@ -25,7 +25,7 @@ def main() -> None:
     if "--detect" in sys.argv:
         detect_loop()
     else:
-        from .tray import run
+        from .ui.app import run
 
         run()
 

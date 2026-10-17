@@ -51,6 +51,39 @@ class AppContext:
         self.store.save(state)
         return errors
 
+    # --- user actions (the UI calls these; they are plain code so tests can too) ---
+
+    def add_deadline(self, title: str, due: datetime, notes: str = "") -> list[str]:
+        state = self.store.load()
+        state.deadlines.append(Deadline(title=title.strip(), due=due, notes=notes.strip()))
+        return self.save_and_estimate(state)
+
+    def edit_deadline(self, did: str, title: str, due: datetime, notes: str) -> list[str]:
+        state = self.store.load()
+        d = state.get(did)
+        if not d:
+            return []
+        d.title, d.due, d.notes = title.strip(), due, notes.strip()
+        return self.save_and_estimate(state)
+
+    def delete_deadline(self, did: str) -> None:
+        state = self.store.load()
+        state.deadlines = [d for d in state.deadlines if d.id != did]
+        self.store.save(state)
+
+    def set_chunk_done(self, did: str, index: int, done: bool) -> None:
+        state = self.store.load()
+        d = state.get(did)
+        if d and d.estimate and 0 <= index < len(d.estimate.chunks):
+            d.estimate.chunks[index].done = done
+            self.store.save(state)
+
+    def save_settings(self, style: WorkingStyle, tagged_games: list[str]) -> None:
+        state = self.store.load()
+        state.working_style = style
+        state.tagged_games = [t.strip() for t in tagged_games if t.strip()]
+        self.store.save(state)
+
     def status_line(self) -> str:
         state = self.store.load()
         risky = at_risk_deadlines(state.deadlines, state.working_style, self.clock.now())
@@ -110,8 +143,3 @@ class AppContext:
         state.deadlines = [a2, essay]
         state.working_style = WorkingStyle(style=Style.SHORT_BURSTS, daily_work_hours=4, max_gaming_minutes=120)
         self.store.save(state)
-
-
-def parse_local_datetime(value: str) -> datetime:
-    """HTML datetime-local inputs send 'YYYY-MM-DDTHH:MM'."""
-    return datetime.fromisoformat(value)

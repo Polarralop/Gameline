@@ -5,7 +5,7 @@ A lightweight menu bar app that tracks your deadlines, notices when you launch a
 ## Run
 
 ```bash
-./run.sh                 # menu bar app + dashboard at http://127.0.0.1:5157
+./run.sh                 # desktop app: window + menu bar icon
 ./run.sh --detect        # just print detected games every 5s
 .venv/bin/python -m pytest -q
 ```
@@ -14,7 +14,7 @@ Put `ANTHROPIC_API_KEY=...` in `.env` for real estimates, or set `GAMELINE_LLM=s
 
 ## Demo flow
 
-1. Dashboard → **Load sample week** (one deadline at risk, one on track).
+1. Demo tab → **Load sample week** (one deadline at risk, one on track).
 2. **Launch fake game** → launch reminder names CSCA48 A2 and the planned work block.
 3. **Speed up time** (1s = 6 min) → long-session alert after about 10 seconds.
 
@@ -30,8 +30,8 @@ gameline/
   reminders.py launch reminder + long-session alert
   clock.py     accelerable clock for demo mode
   notify.py    desktop notifications with osascript fallback
-  dashboard/   Flask + plain HTML forms
-  tray.py      rumps menu bar app (main thread)
+  context.py   user actions shared by the UI and tests
+  ui/          PySide6 (Qt) window + menu bar icon; runs on macOS/Windows/Linux
 ```
 
 ## Detector notes

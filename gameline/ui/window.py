@@ -1356,9 +1356,9 @@ class MainWindow(QMainWindow):
         form.addRow(QLabel(""))
         form.addRow(label("DANGER ZONE", name="dangerTitle"))
         for text, detail, action in (
-            ("Delete all deadlines", "Every deadline, open and completed, with its tasks.", "deadlines"),
-            ("Delete all data", "Gaming history, tagged games and preferences. Deadlines stay.", "data"),
-            ("Delete everything", "Deadlines and all data. Gameline starts fresh.", "everything"),
+            ("Delete all deadlines", "Removes all active and completed deadlines.", "deadlines"),
+            ("Delete game history", "Removes all game history.", "games"),
+            ("Delete everything", "Remove all data; this is a fresh start.", "everything"),
         ):
             b = QPushButton(text)
             b.setObjectName("dangerButton")
@@ -1720,9 +1720,9 @@ class MainWindow(QMainWindow):
         "deadlines": ("Delete all deadlines?",
                       "Every deadline, open and completed, and all of their tasks will be removed. "
                       "Your recaps lose the work history that came from them."),
-        "data": ("Delete all data?",
-                 "Your gaming history, tagged games and preferences will be reset. "
-                 "Deadlines are kept."),
+        "games": ("Delete game history?",
+                  "Every recorded gaming session will be removed, so your recaps lose their "
+                  "gaming totals. Preferences, tagged games and deadlines are kept."),
         "everything": ("Delete everything?",
                        "All deadlines, gaming history, tagged games and preferences will be removed. "
                        "Gameline starts fresh."),
@@ -1735,9 +1735,9 @@ class MainWindow(QMainWindow):
             if what == "deadlines":
                 n = self.ctx.delete_all_deadlines()
                 self.toast(f"Deleted {n} deadline{'s' if n != 1 else ''}", "ok")
-            elif what == "data":
-                self.ctx.delete_all_data()
-                self.toast("Data and preferences reset", "ok")
+            elif what == "games":
+                n = self.ctx.delete_game_history()
+                self.toast(f"Deleted {n} gaming session{'s' if n != 1 else ''}", "ok")
             else:
                 self.ctx.delete_everything()
                 self.toast("Everything deleted. Gameline starts fresh.", "ok")

@@ -157,12 +157,15 @@ class AppContext:
             self.store.save(state)
         return n
 
-    def delete_all_data(self) -> None:
-        """Everything except deadlines: gaming history, tagged games and all
-        preferences go back to how a new install starts."""
+    def delete_game_history(self) -> int:
+        """Forget recorded gaming sessions (what the recaps tally). Preferences,
+        tagged games and deadlines are kept. Returns how many were removed."""
         with self.store.lock:
-            deadlines = self.store.load().deadlines
-            self.store.save(State(deadlines=deadlines))
+            state = self.store.load()
+            n = len(state.sessions)
+            state.sessions = []
+            self.store.save(state)
+        return n
 
     def delete_everything(self) -> None:
         self.store.save(State())

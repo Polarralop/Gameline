@@ -84,8 +84,10 @@ def test_danger_zone(tmp_path):
     s = ctx.store.load()
     assert s.deadlines == [] and s.tagged_games == ["Minecraft"] and s.sessions  # data kept
     ctx.seed_demo_data()
-    ctx.delete_all_data()
+    ctx.set_notify_level(NotifyLevel.OFF)
+    assert ctx.delete_game_history() > 0
     s = ctx.store.load()
-    assert s.deadlines and not s.sessions and s.tagged_games == []  # deadlines kept
+    assert s.deadlines and not s.sessions and s.tagged_games == ["Minecraft"]
+    assert s.working_style.notify_level == NotifyLevel.OFF  # preferences kept
     ctx.delete_everything()
     assert ctx.store.load().to_dict() == State().to_dict()

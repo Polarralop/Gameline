@@ -9,8 +9,8 @@ from __future__ import annotations
 import sys
 import threading
 
-from PySide6.QtCore import QObject, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
+from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from ..context import AppContext
@@ -22,21 +22,8 @@ from .window import ICONS_DIR, MainWindow
 
 
 def make_icon(at_risk: bool) -> QIcon:
-    """Controller emoji, with an orange dot when a deadline is at risk."""
-    pm = QPixmap(64, 64)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    font = QFont()
-    font.setPixelSize(50)
-    p.setFont(font)
-    p.drawText(QRect(0, 0, 64, 64), Qt.AlignmentFlag.AlignCenter, "🎮")
-    if at_risk:
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setBrush(QColor("#f97316"))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.drawEllipse(40, 2, 22, 22)
-    p.end()
-    return QIcon(pm)
+    """App logo with a red alert badge when a deadline is at risk, a green check otherwise."""
+    return QIcon(str(ICONS_DIR / ("logo-risk.svg" if at_risk else "logo-ok.svg")))
 
 
 class InterruptBridge(QObject):

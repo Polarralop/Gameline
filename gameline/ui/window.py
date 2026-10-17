@@ -1168,7 +1168,9 @@ class MainWindow(QMainWindow):
         bulk = QPushButton("Bulk add from syllabus")
         bulk.setObjectName("secondary")
         bulk.setToolTip("Pick a course syllabus PDF; Gameline proposes its deadlines for you to review")
-        bulk.clicked.connect(self.bulk_add)
+        # A lambda, because clicked passes a `checked` bool that bulk_add would take as the path.
+        bulk.clicked.connect(lambda: self.bulk_add())
+        self.bulk_btn = bulk
         bar.addWidget(bulk)
         bar.addStretch(1)
         lay.addLayout(bar)

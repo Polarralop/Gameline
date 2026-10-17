@@ -200,3 +200,14 @@ def test_bulk_add_flow(qapp, tmp_path):
     modal.add_btn.click()
     titles = [d.title for d in ctx.store.load().deadlines]
     assert titles == ["CSCA48 A2", "CSCA48 Midterm"]
+
+
+def test_bulk_add_button_opens_file_picker(qapp, tmp_path, monkeypatch):
+    from gameline.ui import window as win
+
+    picked = []
+    monkeypatch.setattr(win.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (picked.append(1), ("", ""))[1]))
+    w = MainWindow(AppContext(Store(tmp_path / "s.json")), lambda: [])
+    w.bulk_btn.click()  # cancelled picker: no error, no modal
+    assert picked == [1]

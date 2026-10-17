@@ -16,7 +16,8 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 from ..context import AppContext
 from ..notify import notify
 from ..reminders import Reminders
-from ..watcher import Watcher
+from ..recap import SessionRecorder
+from ..watcher import Listeners, Watcher
 from .theme import palette, stylesheet
 from .window import ICONS_DIR, MainWindow
 
@@ -39,7 +40,8 @@ class GamelineApp:
         self.ctx = AppContext()
         self.bridge = InterruptBridge()
         reminders = Reminders(self.ctx.store, self.ctx.clock, interrupt=self.bridge.fired.emit)
-        self.watcher = Watcher(self.ctx.detectors, reminders, clock=self.ctx.clock, interval=3)
+        listeners = Listeners(reminders, SessionRecorder(self.ctx.store))
+        self.watcher = Watcher(self.ctx.detectors, listeners, clock=self.ctx.clock, interval=3)
         self.window = MainWindow(self.ctx, self.playing)
         self.bridge.fired.connect(self.window.interrupt)
         self.icons = {False: make_icon(False), True: make_icon(True)}

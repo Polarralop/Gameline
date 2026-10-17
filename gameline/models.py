@@ -74,6 +74,8 @@ class Chunk:
     # Suggested start, if the plan scheduled one.
     start: datetime | None = None
     done: bool = False
+    # When it was ticked; recaps add up work by this.
+    done_at: datetime | None = None
 
 
 @dataclass
@@ -140,6 +142,7 @@ class Deadline:
                         "hours": c.hours,
                         "start": c.start.isoformat() if c.start else None,
                         "done": c.done,
+                        "done_at": c.done_at.isoformat() if c.done_at else None,
                     }
                     for c in e.chunks
                 ],
@@ -161,6 +164,7 @@ class Deadline:
                         hours=float(c["hours"]),
                         start=datetime.fromisoformat(c["start"]) if c.get("start") else None,
                         done=bool(c.get("done", False)),
+                        done_at=datetime.fromisoformat(c["done_at"]) if c.get("done_at") else None,
                     )
                     for c in e.get("chunks", [])
                 ],

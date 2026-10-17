@@ -12,9 +12,10 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QGuiApplication, QPalette
 
-LIGHT = dict(side="#ecebe6", hover="#e2e0da", bg="#f6f5f2", card="#ffffff", ink="#1d1d1f", muted="#6b6b70", line="#e3e1dc",
+# Chart series: validated categorical slots (blue, orange) per theme; see recap_page.py.
+LIGHT = dict(series_work="#2a78d6", series_game="#eb6834", side="#ecebe6", hover="#e2e0da", bg="#f6f5f2", card="#ffffff", ink="#1d1d1f", muted="#6b6b70", line="#e3e1dc",
              ok="#2f7d4f", ok_bg="#dcefe3", risk="#c2410c", risk_bg="#fbe3d6", accent="#3b5bdb")
-DARK = dict(side="#1b1b1e", hover="#2a2a2f", bg="#151517", card="#1f1f22", ink="#ececee", muted="#9a9aa1", line="#2e2e33",
+DARK = dict(series_work="#3987e5", series_game="#d95926", side="#1b1b1e", hover="#2a2a2f", bg="#151517", card="#1f1f22", ink="#ececee", muted="#9a9aa1", line="#2e2e33",
             ok="#5cc28a", ok_bg="#1f3a2b", risk="#fb8b4f", risk_bg="#43271a", accent="#7d93ff")
 
 
@@ -167,6 +168,11 @@ def stylesheet() -> str:
     QPushButton#complete[ready="true"] {{ background: {c['ok']}; color: white; border-color: {c['ok']}; font-weight: 600; }}
     QFrame#card[completed="true"] {{ background: {c['bg']}; }}
     QCheckBox#viewToggle {{ spacing: 8px; color: {c['muted']}; }}
+    QLabel#stat {{ font-size: 26px; font-weight: 700; }}
+    QLabel#tick {{ color: {c['ok']}; font-weight: 700; }}
+    QFrame#segment {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 9px; }}
+    QPushButton#segButton {{ background: transparent; color: {c['muted']}; padding: 5px 16px; border-radius: 7px; font-weight: 500; }}
+    QPushButton#segButton:checked {{ background: {c['accent']}; color: white; font-weight: 600; }}
     QPushButton#secondary {{ background: transparent; color: {c['accent']}; border: 1px solid {c['accent']}; }}
     QPushButton#secondary:hover {{ background: {c['hover']}; }}
     QScrollArea#proposalList, QWidget#proposalList {{ background: transparent; }}

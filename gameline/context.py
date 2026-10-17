@@ -125,7 +125,8 @@ class AppContext:
             return
         if check_all and d.estimate:
             for c in d.estimate.chunks:
-                c.done = True
+                if not c.done:
+                    c.done, c.done_at = True, self.clock.now()
         d.completed_at = self.clock.now()
         self.store.save(state)
 
@@ -153,7 +154,9 @@ class AppContext:
         state = self.store.load()
         d = state.get(did)
         if d and d.estimate and 0 <= index < len(d.estimate.chunks):
-            d.estimate.chunks[index].done = done
+            chunk = d.estimate.chunks[index]
+            chunk.done = done
+            chunk.done_at = self.clock.now() if done else None
             self.store.save(state)
 
     def save_settings(self, style: WorkingStyle) -> None:
@@ -237,7 +240,51 @@ class AppContext:
         )
         for d in (a2, essay):
             d.estimated_from = d.fingerprint()
+        history, sessions = _demo_history(now)
         state = self.store.load()
-        state.deadlines = [a2, essay]
+        state.deadlines = [a2, essay, *history]
+        state.sessions = sessions
         state.working_style = WorkingStyle(style=Style.SHORT_BURSTS, daily_work_hours=4, max_gaming_minutes=120)
         self.store.save(state)
+
+
+def _demo_history(now: datetime) -> tuple[list[Deadline], list]:
+    """Five weeks of finished work and gaming, so the Recap page has something
+    to show in the demo. Deterministic, so the demo looks the same every time."""
+    import random
+
+    from .store import PlayedSession
+
+    rng = random.Random(48)
+    done: list[Deadline] = []
+    specs = [
+        ("CSCA48 Assignment 1", 33, [("Read handout", 1), ("Q1-Q2", 3), ("Q3-Q4", 3), ("Test and submit", 1)]),
+        ("MATA31 Quiz 3 prep", 26, [("Review notes", 1.5), ("Practice set", 2)]),
+        ("WSTC02 Response paper", 19, [("Read article", 1), ("Outline", 1), ("Draft", 2.5), ("Edit", 1)]),
+        ("CSCA48 Lab 4", 12, [("Lab exercises", 2)]),
+        ("MATA31 Problem Set 4", 2, [("Questions 1-5", 2.5), ("Questions 6-10", 3), ("Write up", 1)]),
+    ]
+    for title, days_ago, tasks in specs:
+        due = (now - timedelta(days=days_ago)).replace(hour=23, minute=59)
+        d = Deadline(title, due)
+        d.estimate = Estimate(
+            effort_hours=sum(h for _, h in tasks), importance=3, rationale="",
+            chunks=[
+                Chunk(name, hours, done=True,
+                      done_at=(due - timedelta(days=len(tasks) - i, hours=rng.randint(2, 8))).replace(minute=0))
+                for i, (name, hours) in enumerate(tasks)
+            ],
+        )
+        d.estimated_from = d.fingerprint()
+        d.completed_at = due - timedelta(hours=3)
+        done.append(d)
+
+    sessions = []
+    games = [("Factorio", 0.45), ("Slay the Spire 2", 0.35), ("Hades II", 0.2)]
+    for days_ago in range(35, 0, -1):
+        if rng.random() < 0.35:
+            continue  # a night off
+        game = rng.choices([g for g, _ in games], weights=[w for _, w in games])[0]
+        start = (now - timedelta(days=days_ago)).replace(hour=rng.choice([19, 20, 21, 22]), minute=0)
+        sessions.append(PlayedSession(game, start, start + timedelta(minutes=rng.choice([45, 60, 90, 120, 150, 180]))))
+    return done, sessions

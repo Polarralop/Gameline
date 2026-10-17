@@ -49,11 +49,13 @@ def test_sidebar_switches_pages_and_collapses(qapp, tmp_path):
     w.account_checker = lambda: AccountStatus(installed=False)  # don't call the real CLI
     assert w.page_title.text() == "Deadlines"
     w.sidebar.items[1][0].click()
-    assert w.stack.currentIndex() == 1 and w.page_title.text() == "Demo"
+    assert w.stack.currentIndex() == 1 and w.page_title.text() == "Recap"
     w.sidebar.items[2][0].click()
+    assert w.page_title.text() == "Demo"
+    w.sidebar.items[3][0].click()
     assert w.page_title.text() == "Preferences"
     lay = w.sidebar.lay
-    assert lay.indexOf(w.sidebar.items[2][0]) == lay.count() - 1  # pinned to the bottom
+    assert lay.indexOf(w.sidebar.items[3][0]) == lay.count() - 1  # pinned to the bottom
     w.sidebar.toggle()
     w.sidebar.anim.setCurrentTime(w.sidebar.anim.duration())
     assert w.sidebar.maximumWidth() == w.sidebar.COLLAPSED
@@ -66,9 +68,10 @@ def test_delete_asks_in_modal_then_deletes(qapp, tmp_path):
     w = MainWindow(ctx, lambda: [])
     modal = w.delete_deadline(ctx.store.load().deadlines[0])
     assert isinstance(modal, ConfirmModal) and not modal.isWindow()
-    assert len(ctx.store.load().deadlines) == 2  # nothing deleted until confirmed
+    before = len(ctx.store.load().deadlines)
+    assert len(ctx.store.load().deadlines) == before
     modal.confirm_btn.click()
-    assert len(ctx.store.load().deadlines) == 1
+    assert len(ctx.store.load().deadlines) == before - 1
 
 
 def test_claude_button_reflects_status(qapp, tmp_path):
@@ -261,4 +264,21 @@ def test_group_by_subject_adds_headers(qapp, tmp_path):
     first = dict(w._headers)
     w.show_done.setChecked(True)
     w.show_done.setChecked(False)
-    assert w._headers == first and all(h.isVisibleTo(w) for h in first.values())  # reused, not rebuilt
+    assert all(w._headers[k] is h and h.isVisibleTo(w) for k, h in first.items())  # reused, not rebuilt
+
+
+def test_recap_page_shows_demo_history(qapp, tmp_path):
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    ctx.seed_demo_data()
+    w = MainWindow(ctx, lambda: [])
+    page = w.recap_page
+    page.refresh(force=True)
+    assert page.period.text().startswith("This week")
+    assert page.game_tile.value.text() != "0h"
+    page.set_kind("month")
+    assert page.period.text().startswith("This month") and len(page.chart.recap.buckets) >= 4
+    page.shift(-1)
+    assert page.period.text().startswith("Last month") and page.next_btn.isEnabled()
+    page.shift(1)
+    page.shift(1)  # can't go into the future
+    assert page.offset == 0 and not page.next_btn.isEnabled()

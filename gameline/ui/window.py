@@ -1159,6 +1159,7 @@ class MainWindow(QMainWindow):
         self.sidebar = Sidebar(self._go_to)
         for icon, text, widget, bottom in (
             ("calendar", "Deadlines", self._deadlines_tab(), False),
+            ("chart", "Recap", self._recap_tab(), False),
             ("demo", "Demo", self._demo_tab(), False),
             ("gear", "Preferences", self._settings_tab(), True),
         ):
@@ -1195,8 +1196,16 @@ class MainWindow(QMainWindow):
         self.page_title.setText(text)
         if text == "Preferences":
             self.check_claude()
+        if text == "Recap":
+            self.recap_page.refresh(force=True)
 
     # pages
+
+    def _recap_tab(self) -> QWidget:
+        from .recap_page import RecapPage  # local import: recap_page uses helpers from this module
+
+        self.recap_page = RecapPage(self.ctx, self._freeze)
+        return self.recap_page
 
     def _deadlines_tab(self) -> QWidget:
         tab = QWidget()
@@ -1402,6 +1411,8 @@ class MainWindow(QMainWindow):
         self.speed_btn.setText("Back to real time" if self.ctx.demo_mode else "Speed up time (6 min/s)")
         self.game_btn.setText("Quit fake game" if self.ctx.fake_game_running else "Launch fake game")
 
+        if self.stack.currentWidget() is getattr(self, "recap_page", None):
+            self.recap_page.refresh()  # no-op unless the saved data changed
         state = self.ctx.store.load()
         sig = self._cards_signature(state)
         if force or sig != self._signature:

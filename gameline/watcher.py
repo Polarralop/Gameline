@@ -39,6 +39,30 @@ class Listener:
     def on_tick(self, sessions: list[Session], now: datetime) -> None: ...
 
 
+class Listeners(Listener):
+    """Fan one watcher's events out to several listeners."""
+
+    def __init__(self, *listeners: Listener) -> None:
+        self.listeners = listeners
+
+    def _each(self, method: str, *args) -> None:
+        # One listener failing (say, a notification error) mustn't stop the others.
+        for listener in self.listeners:
+            try:
+                getattr(listener, method)(*args)
+            except Exception:
+                log.exception("Listener error in %s.%s", type(listener).__name__, method)
+
+    def on_game_started(self, session: Session) -> None:
+        self._each("on_game_started", session)
+
+    def on_game_stopped(self, session: Session, now: datetime) -> None:
+        self._each("on_game_stopped", session, now)
+
+    def on_tick(self, sessions: list[Session], now: datetime) -> None:
+        self._each("on_tick", sessions, now)
+
+
 class Watcher:
     def __init__(
         self,

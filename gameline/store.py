@@ -11,11 +11,32 @@ import json
 import os
 import threading
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from .models import Deadline, WorkingStyle
 
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / "data" / "state.json"
+
+
+@dataclass
+class PlayedSession:
+    """A finished gaming session, kept for recaps."""
+
+    game: str
+    start: datetime
+    end: datetime
+
+    @property
+    def minutes(self) -> float:
+        return max(0.0, (self.end - self.start).total_seconds() / 60)
+
+    def to_dict(self) -> dict:
+        return {"game": self.game, "start": self.start.isoformat(), "end": self.end.isoformat()}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> PlayedSession:
+        return cls(d["game"], datetime.fromisoformat(d["start"]), datetime.fromisoformat(d["end"]))
 
 
 @dataclass
@@ -29,6 +50,8 @@ class State:
     # Deadlines view: "due" (chronological) or "subject" (grouped by course).
     view_sort: str = "due"
     show_completed: bool = False
+    # Finished gaming sessions, for weekly/monthly recaps.
+    sessions: list[PlayedSession] = field(default_factory=list)
 
     def get(self, deadline_id: str) -> Deadline | None:
         return next((d for d in self.deadlines if d.id == deadline_id), None)
@@ -41,6 +64,7 @@ class State:
             "llm_backend": self.llm_backend,
             "view_sort": self.view_sort,
             "show_completed": self.show_completed,
+            "sessions": [x.to_dict() for x in self.sessions],
         }
 
     @classmethod
@@ -52,6 +76,7 @@ class State:
             llm_backend=d.get("llm_backend", ""),
             view_sort=d.get("view_sort", "due"),
             show_completed=bool(d.get("show_completed", False)),
+            sessions=[PlayedSession.from_dict(x) for x in d.get("sessions", [])],
         )
 
 

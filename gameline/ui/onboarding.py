@@ -377,7 +377,7 @@ class OnboardingModal(Modal):
         title = label("You're all set!", name="welcomeTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(title)
-        sub = label("Add your first deadlines and Gameline will plan the work and keep an eye on your game time.",
+        sub = label("Add your first deadlines: Gameline will plan the work while keeping an eye on your game time.",
                     muted=True, wrap=True)
         sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(sub)

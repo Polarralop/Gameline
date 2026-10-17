@@ -483,7 +483,7 @@ class DeadlineCard(QFrame):
             chunks = d.estimate.chunks
             if d.id in window.collapsed:
                 done = sum(c.done for c in chunks)
-                lay.addWidget(label(f"{done} of {len(chunks)} tasks done", muted=True))
+                summary = label(f"{done} of {len(chunks)} tasks done", muted=True)  # shares the Edit/Delete row
             else:
                 if d.estimate.rationale:
                     lay.addWidget(label(d.estimate.rationale, muted=True, wrap=True))
@@ -495,6 +495,8 @@ class DeadlineCard(QFrame):
                 lay.addLayout(tasks)
 
         actions = QHBoxLayout()
+        if d.id in window.collapsed and d.estimate:
+            actions.addWidget(summary)
         actions.addStretch(1)
         for text, fn in (("Edit", lambda: window.edit_deadline(d)), ("Delete", lambda: window.delete_deadline(d))):
             b = QPushButton(text)
@@ -610,6 +612,7 @@ class MainWindow(QMainWindow):
         self.sessions = sessions  # names of games currently being played
         self.pending: set[str] = set()  # deadline ids being estimated right now
         self.collapsed: set[str] = set()  # deadline ids whose task list is hidden
+        self.card_widgets: dict[str, DeadlineCard] = {}
         self._signature = None
         self.pool = QThreadPool.globalInstance()
         self.account_checker = account_status  # swapped out in tests
@@ -676,6 +679,7 @@ class MainWindow(QMainWindow):
         bar.addWidget(self.add_btn)
         bar.addStretch(1)
         lay.addLayout(bar)
+        lay.addSpacing(12)
 
         self.cards_host = QWidget()
         self.cards_host.setObjectName("page")
@@ -685,7 +689,21 @@ class MainWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # Always reserve the scrollbar's width, so cards don't reflow (and flash)
+        # the moment the list grows tall enough to scroll.
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         scroll.setWidget(self.cards_host)
+        self.scroll = scroll
+        sb = scroll.verticalScrollBar()
+
+        def mark_idle(_min: int, maximum: int) -> None:
+            # Hide the handle while there's nothing to scroll (see theme.py).
+            sb.setProperty("idle", maximum == 0)
+            sb.style().unpolish(sb)
+            sb.style().polish(sb)
+
+        sb.rangeChanged.connect(mark_idle)
+        mark_idle(0, 0)
         lay.addWidget(scroll, 1)
         return tab
 
@@ -796,9 +814,7 @@ class MainWindow(QMainWindow):
         self.game_btn.setText("Quit fake game" if self.ctx.fake_game_running else "Launch fake game")
 
         # Rebuild cards only when something visible changed.
-        path = self.ctx.store.path
-        mtime = path.stat().st_mtime if path.exists() else 0
-        sig = (mtime, now.strftime("%Y%m%d%H%M"), frozenset(self.pending))
+        sig = self._cards_signature(now)
         if force or sig != self._signature:
             self._signature = sig
             self._rebuild_cards(now)
@@ -809,7 +825,43 @@ class MainWindow(QMainWindow):
         widget.style().unpolish(widget)
         widget.style().polish(widget)
 
+    def _cards_signature(self, now: datetime):
+        path = self.ctx.store.path
+        mtime = path.stat().st_mtime if path.exists() else 0
+        return (mtime, now.strftime("%Y%m%d%H%M"), frozenset(self.pending))
+
     def _rebuild_cards(self, now: datetime) -> None:
+        # Paint once at the end instead of after every removed and added card.
+        self.cards_host.setUpdatesEnabled(False)
+        try:
+            self._fill_cards(now)
+        finally:
+            self.cards_host.setUpdatesEnabled(True)
+
+    def replace_card(self, did: str) -> None:
+        """Rebuild just one card in place (after a tick or collapse), so the
+        rest of the list doesn't redraw."""
+        old = self.card_widgets.get(did)
+        state = self.ctx.store.load()
+        d = state.get(did)
+        if old is None or d is None:
+            self.refresh(force=True)
+            return
+        now = self.ctx.clock.now()
+        self.cards_host.setUpdatesEnabled(False)
+        try:
+            new = DeadlineCard(self, assess(d, state.working_style, now))
+            self.cards.replaceWidget(old, new)
+            old.hide()
+            old.deleteLater()
+            self.card_widgets[did] = new
+        finally:
+            self.cards_host.setUpdatesEnabled(True)
+        self._signature = self._cards_signature(now)  # so the timer doesn't rebuild everything
+        self.refresh()  # header pill and clock only
+
+    def _fill_cards(self, now: datetime) -> None:
+        self.card_widgets = {}
         while self.cards.count():
             item = self.cards.takeAt(0)
             if item.widget():
@@ -820,7 +872,9 @@ class MainWindow(QMainWindow):
         if not deadlines:
             self.cards.addWidget(label("No deadlines yet. Add one, or load the sample week from the Demo tab.", muted=True))
         for d in deadlines:
-            self.cards.addWidget(DeadlineCard(self, assess(d, state.working_style, now)))
+            card = DeadlineCard(self, assess(d, state.working_style, now))
+            self.card_widgets[d.id] = card
+            self.cards.addWidget(card)
         self.cards.addStretch(1)
 
     # actions
@@ -887,12 +941,12 @@ class MainWindow(QMainWindow):
 
     def toggle_collapsed(self, did: str) -> None:
         self.collapsed.symmetric_difference_update({did})
-        QTimer.singleShot(0, lambda: self.refresh(force=True))
+        QTimer.singleShot(0, lambda: self.replace_card(did))
 
     def toggle_chunk(self, did: str, index: int, done: bool) -> None:
         self.ctx.set_chunk_done(did, index, done)
-        # Defer the rebuild so the checkbox that fired this isn't deleted mid-signal.
-        QTimer.singleShot(0, lambda: self.refresh(force=True))
+        # Defer so the checkbox that fired this isn't deleted mid-signal.
+        QTimer.singleShot(0, lambda: self.replace_card(did))
 
     def _load_settings(self) -> None:
         state = self.ctx.store.load()

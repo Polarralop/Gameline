@@ -127,6 +127,7 @@ def stylesheet() -> str:
     QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
     QScrollBar::handle:vertical {{ background: {c['line']}; border-radius: 3px; min-height: 30px; }}
     QScrollBar::handle:vertical:hover {{ background: {c['muted']}; }}
+    QScrollBar[idle="true"]::handle:vertical {{ background: transparent; }}
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
     QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
     QToolButton#collapse {{ background: transparent; border: 0; border-radius: 6px; padding: 4px; }}

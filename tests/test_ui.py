@@ -126,6 +126,8 @@ def test_collapse_arrow_hides_tasks(qapp, tmp_path):
                     if isinstance(w.cards.itemAt(i).widget(), DeadlineCard))
 
     assert first_card().findChildren(TaskRow)
+    others = [c for k, c in w.card_widgets.items() if k != did]
     w.toggle_collapsed(did)
-    w.refresh(force=True)
+    w.replace_card(did)
     assert not first_card().findChildren(TaskRow)
+    assert [c for k, c in w.card_widgets.items() if k != did] == others  # other cards untouched

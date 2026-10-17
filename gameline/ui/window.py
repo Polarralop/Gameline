@@ -215,7 +215,7 @@ class DeadlineCard(QFrame):
 class Sidebar(QFrame):
     """Navigation rail that collapses to icons only. Width changes are animated."""
 
-    EXPANDED, COLLAPSED = 210, 60
+    EXPANDED, COLLAPSED = 210, 64
 
     def __init__(self, on_select: Callable[[int, str], None]) -> None:
         super().__init__()
@@ -282,6 +282,10 @@ class Sidebar(QFrame):
         self.brand.setVisible(self.expanded)
         for btn, icon, text in self.items:
             btn.setText(f"{icon}   {text}" if self.expanded else icon)
+            # Collapsed buttons center the icon with no side padding, so it isn't clipped.
+            btn.setProperty("compact", not self.expanded)
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
 
 
 # --- main window -------------------------------------------------------------

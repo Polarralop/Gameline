@@ -5,7 +5,15 @@
                             changes show up on the next restart without rebuilding
 """
 
+import re
+from pathlib import Path
+
 from setuptools import setup
+
+# One version, from gameline/__init__.py. macOS wants plain numbers in
+# CFBundleShortVersionString, so the pre-release tag goes in its own key.
+VERSION = re.search(r'__version__ = "([^"]+)"', Path("gameline/__init__.py").read_text()).group(1)
+NUMERIC = re.match(r"\d+(\.\d+)*", VERSION).group(0)
 
 APP = ["packaging/launcher.py"]
 DATA_FILES = [
@@ -31,7 +39,9 @@ OPTIONS = {
         "CFBundleDisplayName": "Gameline",
         "CFBundleIdentifier": "ca.polarralop.gameline",
         "CFBundleIconName": "AppIcon",  # the icon inside Assets.car
-        "CFBundleShortVersionString": "0.1.0",
+        "CFBundleShortVersionString": NUMERIC,
+        "CFBundleVersion": NUMERIC,
+        "GamelineVersion": VERSION,
         "NSHighResolutionCapable": True,
         "LSMinimumSystemVersion": "13.0",
         # Lets the notification permission prompt name the app.
@@ -41,6 +51,7 @@ OPTIONS = {
 
 setup(
     name="Gameline",
+    version=VERSION,
     app=APP,
     data_files=DATA_FILES,
     options={"py2app": OPTIONS},

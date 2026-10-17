@@ -66,7 +66,7 @@ from ..llm import available_backends, subscription_enabled
 from ..llm.claude_cli import AccountStatus, account_status, cached_status, forget_status, open_login_terminal
 from ..llm.claude_cli import logout as claude_logout
 from ..models import Deadline, NotifyLevel, Style, WorkingStyle, subject_of
-from .. import keys
+from .. import __version__, keys
 from ..paths import icons_dir
 from ..planner import DeadlineStatus, assess
 from .theme import colors, dropdown_list_qss, icon_path
@@ -1498,6 +1498,9 @@ class MainWindow(QMainWindow):
             h.addWidget(b)
             h.addWidget(label(detail, muted=True), 1)
             form.addRow("", row)
+
+        form.addRow(QLabel(""))
+        form.addRow(label(f"Gameline {__version__}", muted=True))
 
         # One consistent size for every field and button on the page.
         for w in (self.style_box, self.daily_hours, self.notify_box, self.max_minutes, self.repeat_minutes, save,

@@ -43,15 +43,21 @@ if [ "$1" = "--alias" ]; then
   "$LSREGISTER" -f dist/Gameline.app || true
   echo "Built dist/Gameline.app (alias). Open it with: open dist/Gameline.app"
 else
-  # Shareable copies: a drag-to-Applications disk image and a zip.
+  # Shareable copies, named for a GitHub release: a drag-to-Applications disk
+  # image and a zip. Nothing from .env or the data folder is inside the app.
+  VERSION=$(.venv/bin/python -c "import gameline; print(gameline.__version__)")
+  DMG="dist/Gameline-$VERSION.dmg"
+  ZIP="dist/Gameline-$VERSION-macos-arm64.zip"
+  rm -f dist/Gameline*.dmg dist/Gameline*.zip
   stage=$(mktemp -d)
   ditto dist/Gameline.app "$stage/Gameline.app"
   ln -s /Applications "$stage/Applications"
   cp packaging/OPEN_ME_FIRST.txt "$stage/Open me first.txt"
-  hdiutil create -quiet -volname Gameline -srcfolder "$stage" -ov -format UDZO dist/Gameline.dmg
+  hdiutil create -quiet -volname "Gameline $VERSION" -srcfolder "$stage" -ov -format UDZO "$DMG"
   rm -rf "$stage"
-  ditto -c -k --keepParent dist/Gameline.app dist/Gameline.zip
-  echo "Made dist/Gameline.dmg and dist/Gameline.zip for sharing"
+  ditto -c -k --keepParent dist/Gameline.app "$ZIP"
+  (cd dist && shasum -a 256 "$(basename "$DMG")" "$(basename "$ZIP")" > SHA256SUMS.txt)
+  echo "Made $DMG and $ZIP (checksums in dist/SHA256SUMS.txt)"
   # Install outside ~/Documents: macOS asks for Documents access whenever an
   # app stored there reads its own files.
   osascript -e 'quit app "Gameline"' >/dev/null 2>&1 || true

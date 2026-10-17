@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDateTimeEdit,
     QDoubleSpinBox,
+    QApplication,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -1438,6 +1439,17 @@ class MainWindow(QMainWindow):
         if frozen and self._freeze_depth == 1:
             self.setUpdatesEnabled(False)
         elif not frozen and self._freeze_depth == 0:
+            # Layouts are lazy: the list's new height and the scroll area's
+            # range are only worked out on the next event-loop pass. Do that
+            # now, while still frozen; otherwise a scrolled-down list paints
+            # once with the old geometry and flashes.
+            self.cards.activate()
+            QApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)
+            # Resume painting after any remaining posted layout work.
+            QTimer.singleShot(0, self._unfreeze)
+
+    def _unfreeze(self) -> None:
+        if getattr(self, "_freeze_depth", 0) == 0:
             self.setUpdatesEnabled(True)
 
     def _rebuild_cards(self, now: datetime) -> None:

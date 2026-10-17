@@ -211,3 +211,47 @@ def test_bulk_add_button_opens_file_picker(qapp, tmp_path, monkeypatch):
     w = MainWindow(AppContext(Store(tmp_path / "s.json")), lambda: [])
     w.bulk_btn.click()  # cancelled picker: no error, no modal
     assert picked == [1]
+
+
+def test_complete_button_flow(qapp, tmp_path):
+    from gameline.ui.window import ConfirmModal
+
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    ctx.seed_demo_data()
+    w = MainWindow(ctx, lambda: [])
+    a2 = ctx.store.load().deadlines[0]
+    card = w.card_widgets[a2.id]
+    assert card.complete_btn.property("ready") is False
+    modal = w.complete_deadline(a2.id)  # tasks unchecked -> asks first
+    assert isinstance(modal, ConfirmModal)
+    modal.confirm_btn.click()
+    d = ctx.store.load().get(a2.id)
+    assert d.completed and d.all_tasks_done
+    assert a2.id not in w.card_widgets  # hidden while "Show completed" is off
+    w.show_done.setChecked(True)
+    assert a2.id in w.card_widgets
+
+
+def test_complete_highlights_when_all_ticked(qapp, tmp_path):
+    from gameline.ui.window import TaskRow
+
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    ctx.seed_demo_data()
+    w = MainWindow(ctx, lambda: [])
+    essay = ctx.store.load().deadlines[1]
+    card = w.card_widgets[essay.id]
+    for row in card.findChildren(TaskRow):
+        row.box.click()
+    assert card.complete_btn.property("ready") is True
+    assert w.complete_deadline(essay.id) is None  # all done -> completes without asking
+    assert ctx.store.load().get(essay.id).completed
+
+
+def test_group_by_subject_adds_headers(qapp, tmp_path):
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    ctx.seed_demo_data()
+    w = MainWindow(ctx, lambda: [])
+    w.sort_box.setCurrentIndex(w.sort_box.findData("subject"))
+    headers = [w.cards.itemAt(i).widget().text() for i in range(w.cards.count())
+               if isinstance(w.cards.itemAt(i).widget(), QtWidgets.QLabel)]
+    assert headers == ["CSCA48", "WSTC02"]

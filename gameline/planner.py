@@ -62,7 +62,7 @@ def assess(
     needed = remaining * STYLE_FACTOR[style.style]
     available = available_work_hours(now, deadline.due, style.daily_work_hours)
     slack = available - needed
-    at_risk = remaining > 0 and (slack < MIN_SLACK_HOURS or slack < MIN_SLACK_RATIO * remaining)
+    at_risk = not deadline.completed and remaining > 0 and (slack < MIN_SLACK_HOURS or slack < MIN_SLACK_RATIO * remaining)
     return DeadlineStatus(
         deadline=deadline,
         hours_until_due=(deadline.due - now).total_seconds() / 3600,
@@ -76,7 +76,7 @@ def assess(
 
 def at_risk_deadlines(deadlines: list[Deadline], style: WorkingStyle, now: datetime) -> list[DeadlineStatus]:
     """Upcoming deadlines that are at risk, tightest slack first."""
-    statuses = [assess(d, style, now) for d in deadlines if d.due > now]
+    statuses = [assess(d, style, now) for d in deadlines if d.due > now and not d.completed]
     risky = [s for s in statuses if s.at_risk]
     return sorted(risky, key=lambda s: (s.slack_hours, -(s.deadline.estimate.importance if s.deadline.estimate else 0)))
 
@@ -86,5 +86,5 @@ def prep_hours_needed(deadlines: list[Deadline], style: WorkingStyle, now: datet
     return sum(
         assess(d, style, now).remaining_hours
         for d in deadlines
-        if now < d.due <= now + timedelta(hours=horizon_hours)
+        if now < d.due <= now + timedelta(hours=horizon_hours) and not d.completed
     )

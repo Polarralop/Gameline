@@ -6,10 +6,25 @@ the UI can build them directly.
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
+
+
+_COURSE_CODE = re.compile(r"\b([A-Z]{2,5})\s?(\d{2,4}[A-Z]?\d?)\b")
+
+
+def subject_of(title: str) -> str:
+    """Course code from a deadline title ("CSCA48 Assignment 2" -> "CSCA48",
+    "CMDS 1630 Report" -> "CMDS 1630"), or "Other"."""
+    m = _COURSE_CODE.search(title)
+    if not m:
+        return "Other"
+    letters, digits = m.groups()
+    sep = " " if m.group(0)[len(letters):len(letters) + 1] == " " else ""
+    return f"{letters}{sep}{digits}"
 
 
 class NotifyLevel(str, Enum):
@@ -84,6 +99,17 @@ class Deadline:
     estimate: Estimate | None = None
     # Fingerprint of the fields the estimate was made from; re-estimate when it changes.
     estimated_from: str | None = None
+    # Set when the user marks it complete; completed deadlines are archived
+    # (hidden by default) and ignored by the planner and reminders.
+    completed_at: datetime | None = None
+
+    @property
+    def completed(self) -> bool:
+        return self.completed_at is not None
+
+    @property
+    def all_tasks_done(self) -> bool:
+        return bool(self.estimate and self.estimate.chunks) and all(c.done for c in self.estimate.chunks)
 
     def fingerprint(self) -> str:
         return f"{self.title}|{self.due.isoformat()}|{self.notes}"
@@ -99,6 +125,7 @@ class Deadline:
             "due": self.due.isoformat(),
             "notes": self.notes,
             "estimated_from": self.estimated_from,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "estimate": None,
         }
         if self.estimate:
@@ -145,4 +172,5 @@ class Deadline:
             notes=d.get("notes", ""),
             estimate=est,
             estimated_from=d.get("estimated_from"),
+            completed_at=datetime.fromisoformat(d["completed_at"]) if d.get("completed_at") else None,
         )

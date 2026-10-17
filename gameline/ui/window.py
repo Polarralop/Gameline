@@ -63,7 +63,7 @@ from ..context import AppContext
 from ..llm import BACKENDS
 from ..llm.claude_cli import AccountStatus, account_status, open_login_terminal
 from ..llm.claude_cli import logout as claude_logout
-from ..models import Deadline, NotifyLevel, Style, WorkingStyle
+from ..models import Deadline, NotifyLevel, Style, WorkingStyle, subject_of
 from ..planner import DeadlineStatus, assess
 from .theme import colors, dropdown_list_qss, icon_path
 
@@ -385,15 +385,16 @@ class ConfirmModal(Modal):
         confirm_text: str,
         on_confirm: Callable[[], None],
         on_cancel: Callable[[], None] | None = None,
+        danger: bool = True,
     ) -> None:
         super().__init__(host, heading, width=420)
         self.on_confirm = on_confirm
         self.on_cancel = on_cancel
         self._confirmed = False
         self.body.addWidget(label(message, wrap=True))
-        warn = label(warning, name="warning", wrap=True)
-        self.body.addWidget(warn)
-        self.confirm_btn = self.add_buttons(confirm_text, self._confirm, danger=True)
+        if warning:
+            self.body.addWidget(label(warning, name="warning" if danger else "", muted=not danger, wrap=True))
+        self.confirm_btn = self.add_buttons(confirm_text, self._confirm, danger=danger)
         self.open(focus=self.confirm_btn)
 
     def _confirm(self) -> None:
@@ -746,6 +747,11 @@ class DeadlineCard(QFrame):
         lay.setContentsMargins(16, 14, 16, 14)
         lay.setSpacing(6)
 
+        self.complete_btn = None
+        if d.completed:
+            self._build_completed(window, d, lay)
+            return
+
         top = QHBoxLayout()
         left = QVBoxLayout()
         left.setSpacing(2)
@@ -824,10 +830,36 @@ class DeadlineCard(QFrame):
         self.summary = label("", muted=True)  # "2 of 8 tasks done", shown when collapsed
         actions.addWidget(self.summary)
         actions.addStretch(1)
+        self.complete_btn = QPushButton("✓  Complete")
+        self.complete_btn.setObjectName("complete")
+        self.complete_btn.setToolTip("Mark this deadline done and archive it")
+        self.complete_btn.clicked.connect(lambda: window.complete_deadline(d.id))
+        actions.addWidget(self.complete_btn)
         actions.addWidget(self._ghost("Edit", lambda: window.edit_deadline(d)))
         actions.addWidget(self._ghost("Delete", lambda: window.delete_deadline(d)))
         lay.addLayout(actions)
         self.update_status(s)
+
+    def _build_completed(self, window: MainWindow, d: Deadline, lay: QVBoxLayout) -> None:
+        """Archived look: one compact row with Reopen and Delete."""
+        self.setProperty("completed", True)
+        self.estimated = False
+        row = QHBoxLayout()
+        left = QVBoxLayout()
+        left.setSpacing(2)
+        title = label(d.title, name="title")
+        font = title.font()
+        font.setStrikeOut(True)
+        title.setFont(font)
+        title.setProperty("done", True)
+        left.addWidget(title)
+        self.meta = label(f"Completed {fmt_dt(d.completed_at)} · was due {fmt_dt(d.due)}", muted=True)
+        left.addWidget(self.meta)
+        row.addLayout(left, 1)
+        row.addWidget(pill("Completed", "idle"), 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(self._ghost("Reopen", lambda: window.reopen_deadline(d.id)))
+        row.addWidget(self._ghost("Delete", lambda: window.delete_deadline(d)))
+        lay.addLayout(row)
 
     @staticmethod
     def _ghost(text: str, fn: Callable[[], object]) -> QPushButton:
@@ -838,6 +870,14 @@ class DeadlineCard(QFrame):
 
     def update_status(self, s: DeadlineStatus) -> None:
         d = s.deadline
+        if d.completed:
+            return
+        if self.complete_btn is not None:
+            # Highlight Complete once every task is ticked.
+            ready = all(r.box.isChecked() for r in self.rows) and bool(self.rows)
+            if self.complete_btn.property("ready") != ready:
+                self.complete_btn.setProperty("ready", ready)
+                _repolish(self.complete_btn)
         meta = f"Due {fmt_dt(d.due)}"
         if d.estimate and self.estimated:
             meta += f" · importance {d.estimate.importance}/5"
@@ -1173,6 +1213,25 @@ class MainWindow(QMainWindow):
         self.bulk_btn = bulk
         bar.addWidget(bulk)
         bar.addStretch(1)
+        self.sort_box = styled_combo()
+        self.sort_box.addItem("Sort by due date", "due")
+        self.sort_box.addItem("Group by subject", "subject")
+        self.sort_box.setFixedSize(180, 36)
+        self.sort_box.currentIndexChanged.connect(
+            lambda: (self.ctx.set_view(sort=self.sort_box.currentData()), self.refresh(force=True)))
+        self.show_done = QCheckBox("Show completed")
+        self.show_done.setObjectName("viewToggle")
+        self.show_done.toggled.connect(lambda on: (self.ctx.set_view(show_completed=on), self.refresh(force=True)))
+        state = self.ctx.store.load()
+        for w_ in (self.sort_box, self.show_done):
+            w_.blockSignals(True)  # setting saved values isn't a user change
+        self.sort_box.setCurrentIndex(max(0, self.sort_box.findData(state.view_sort)))
+        self.show_done.setChecked(state.show_completed)
+        for w_ in (self.sort_box, self.show_done):
+            w_.blockSignals(False)
+        bar.addWidget(self.sort_box)
+        bar.addSpacing(8)
+        bar.addWidget(self.show_done)
         lay.addLayout(bar)
         lay.addSpacing(12)
 
@@ -1364,10 +1423,10 @@ class MainWindow(QMainWindow):
     def _cards_signature(self, state) -> tuple:
         """What forces a rebuild: which deadlines exist and their shape. Ticks,
         collapsing and the clock moving are applied in place instead."""
-        return tuple(
+        return (state.view_sort, state.show_completed) + tuple(
             (d.id, d.fingerprint(), d.estimate is not None and not d.needs_estimate,
              len(d.estimate.chunks) if d.estimate else 0, d.estimate.rationale if d.estimate else "",
-             d.id in self.pending)
+             d.id in self.pending, d.completed)
             for d in sorted(state.deadlines, key=lambda d: d.due)
         )
 
@@ -1387,13 +1446,36 @@ class MainWindow(QMainWindow):
                 item.widget().hide()  # hide now; deleteLater only runs on the next event loop pass
                 item.widget().deleteLater()
         state = self.ctx.store.load()
-        deadlines = sorted(state.deadlines, key=lambda d: d.due)
-        if not deadlines:
-            self.cards.addWidget(label("No deadlines yet. Add one, or load the sample week from the Demo tab.", muted=True))
-        for d in deadlines:
+        hidden = 0 if state.show_completed else sum(d.completed for d in state.deadlines)
+        shown = [d for d in state.deadlines if state.show_completed or not d.completed]
+        # Open deadlines first (by due date), completed ones after.
+        shown.sort(key=lambda d: (d.completed, d.due))
+        if not shown:
+            text = "No deadlines yet. Add one, or load the sample week from the Demo tab."
+            if hidden:
+                text = f"All caught up. {hidden} completed deadline{'s are' if hidden != 1 else ' is'} hidden."
+            self.cards.addWidget(label(text, muted=True))
+
+        def add(d: Deadline) -> None:
             card = DeadlineCard(self, assess(d, state.working_style, now))
             self.card_widgets[d.id] = card
             self.cards.addWidget(card)
+
+        if state.view_sort == "subject":
+            groups: dict[str, list[Deadline]] = {}
+            for d in shown:
+                groups.setdefault(subject_of(d.title), []).append(d)
+            # Subjects ordered by their soonest open deadline; "Other" last.
+            order = sorted(groups, key=lambda k: (k == "Other", min((g.completed, g.due) for g in groups[k])))
+            for i, subject in enumerate(order):
+                header = label(subject.upper(), name="h2")
+                header.setContentsMargins(2, 8 if i else 0, 0, 0)
+                self.cards.addWidget(header)
+                for d in groups[subject]:
+                    add(d)
+        else:
+            for d in shown:
+                add(d)
         self.cards.addStretch(1)
 
     # actions
@@ -1484,6 +1566,38 @@ class MainWindow(QMainWindow):
             "Delete",
             confirm,
         )
+
+    def complete_deadline(self, did: str) -> ConfirmModal | None:
+        d = self.ctx.store.load().get(did)
+        if d is None:
+            return None
+        chunks = d.estimate.chunks if d.estimate else []
+        left = sum(not c.done for c in chunks)
+
+        def finish(check_all: bool) -> None:
+            self.ctx.complete_deadline(did, check_all=check_all)
+            self.refresh(force=True)
+            note = "" if self.ctx.store.load().show_completed else " Find it under Show completed."
+            self.toast(f"Completed “{d.title}”.{note}", "ok")
+
+        if left == 0:
+            finish(False)
+            return None
+        return ConfirmModal(
+            self.centralWidget(),
+            "Not everything's finished",
+            f"{left} of {len(chunks)} tasks for “{d.title}” {'is' if left == 1 else 'are'} still unchecked. "
+            "Check them all and mark the deadline complete?",
+            "",
+            "Check all and complete",
+            lambda: finish(True),
+            danger=False,
+        )
+
+    def reopen_deadline(self, did: str) -> None:
+        self.ctx.reopen_deadline(did)
+        self.refresh(force=True)
+        self.toast("Deadline reopened")
 
     def toggle_collapsed(self, did: str) -> None:
         self.collapsed.symmetric_difference_update({did})

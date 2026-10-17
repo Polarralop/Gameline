@@ -26,6 +26,9 @@ class State:
     tagged_games: list[str] = field(default_factory=list)
     # LLM backend chosen in Preferences ("" = use the GAMELINE_LLM default).
     llm_backend: str = ""
+    # Deadlines view: "due" (chronological) or "subject" (grouped by course).
+    view_sort: str = "due"
+    show_completed: bool = False
 
     def get(self, deadline_id: str) -> Deadline | None:
         return next((d for d in self.deadlines if d.id == deadline_id), None)
@@ -36,6 +39,8 @@ class State:
             "working_style": self.working_style.to_dict(),
             "tagged_games": self.tagged_games,
             "llm_backend": self.llm_backend,
+            "view_sort": self.view_sort,
+            "show_completed": self.show_completed,
         }
 
     @classmethod
@@ -45,6 +50,8 @@ class State:
             working_style=WorkingStyle.from_dict(d.get("working_style", {})),
             tagged_games=list(d.get("tagged_games", [])),
             llm_backend=d.get("llm_backend", ""),
+            view_sort=d.get("view_sort", "due"),
+            show_completed=bool(d.get("show_completed", False)),
         )
 
 

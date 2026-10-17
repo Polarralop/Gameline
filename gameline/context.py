@@ -118,6 +118,32 @@ class AppContext:
         self.update_deadline(did, title, due, notes)
         return self.estimate_deadline(did)
 
+    def complete_deadline(self, did: str, check_all: bool = False) -> None:
+        state = self.store.load()
+        d = state.get(did)
+        if not d:
+            return
+        if check_all and d.estimate:
+            for c in d.estimate.chunks:
+                c.done = True
+        d.completed_at = self.clock.now()
+        self.store.save(state)
+
+    def reopen_deadline(self, did: str) -> None:
+        state = self.store.load()
+        d = state.get(did)
+        if d:
+            d.completed_at = None
+            self.store.save(state)
+
+    def set_view(self, sort: str | None = None, show_completed: bool | None = None) -> None:
+        state = self.store.load()
+        if sort is not None:
+            state.view_sort = sort
+        if show_completed is not None:
+            state.show_completed = show_completed
+        self.store.save(state)
+
     def delete_deadline(self, did: str) -> None:
         state = self.store.load()
         state.deadlines = [d for d in state.deadlines if d.id != did]

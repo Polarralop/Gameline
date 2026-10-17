@@ -61,3 +61,16 @@ def test_estimate_does_not_overwrite_edits_made_meanwhile(tmp_path):
     ctx.estimate_deadline(did)
     d = ctx.store.load().get(did)
     assert d.notes == "changed" and d.estimate is None  # stale estimate discarded
+
+
+def test_complete_and_reopen(tmp_path):
+    ctx = make(tmp_path)
+    ctx.seed_demo_data()
+    a2 = ctx.store.load().deadlines[0]
+    assert ctx.status_line() == "1 deadline at risk"
+    ctx.complete_deadline(a2.id, check_all=True)
+    d = ctx.store.load().get(a2.id)
+    assert d.completed and d.all_tasks_done
+    assert ctx.status_line() == "On track"  # completed deadlines don't count as at risk
+    ctx.reopen_deadline(a2.id)
+    assert not ctx.store.load().get(a2.id).completed

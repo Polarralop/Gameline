@@ -161,6 +161,12 @@ def stylesheet() -> str:
     QFrame#gameItem:hover {{ background: {c['bg']}; }}
     QToolButton#removeGame {{ background: transparent; border: 0; color: {c['muted']}; padding: 2px 6px; border-radius: 4px; }}
     QToolButton#removeGame:hover {{ color: {c['risk']}; background: {c['risk_bg']}; }}
+    QPushButton#complete {{ background: transparent; color: {c['muted']}; border: 1px solid {c['line']};
+        padding: 4px 10px; font-weight: 500; }}
+    QPushButton#complete:hover {{ color: {c['ok']}; border-color: {c['ok']}; }}
+    QPushButton#complete[ready="true"] {{ background: {c['ok']}; color: white; border-color: {c['ok']}; font-weight: 600; }}
+    QFrame#card[completed="true"] {{ background: {c['bg']}; }}
+    QCheckBox#viewToggle {{ spacing: 8px; color: {c['muted']}; }}
     QPushButton#secondary {{ background: transparent; color: {c['accent']}; border: 1px solid {c['accent']}; }}
     QPushButton#secondary:hover {{ background: {c['hover']}; }}
     QScrollArea#proposalList, QWidget#proposalList {{ background: transparent; }}

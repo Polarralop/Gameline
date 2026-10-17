@@ -264,6 +264,17 @@ class OnboardingModal(Modal):
         self.level_warn = label("Caution: this can interrupt online games or intense moments.",
                                 name="warning", wrap=True)
         lay.addWidget(self.level_warn)
+        # Keep the page one height whichever level is picked: the description
+        # box fits the longest description, and the caution line keeps its
+        # space while hidden.
+        self.level_hint.ensurePolished()
+        width = 472
+        self.level_hint.setFixedHeight(max(
+            self.level_hint.fontMetrics().boundingRect(0, 0, width, 1000, Qt.TextFlag.TextWordWrap, h).height()
+            for h in LEVEL_HINTS) + 4)
+        keep = self.level_warn.sizePolicy()
+        keep.setRetainSizeWhenHidden(True)
+        self.level_warn.setSizePolicy(keep)
         self._level_changed(self.level_idx)
         return page
 
@@ -410,8 +421,6 @@ class OnboardingModal(Modal):
         self.interrupt_ok = False  # changing back and forth asks again
         self.level_hint.setText(LEVEL_HINTS[i])
         self.level_warn.setVisible(LEVELS[i] == NotifyLevel.INTERRUPT)
-        if hasattr(self, "footer"):
-            self._fit()
 
     def _add_game(self, name: str) -> bool:
         if not name.strip() or not self.ctx.add_tagged_game(name):

@@ -12,7 +12,18 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
-from PySide6.QtCore import QDateTime, QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtCore import (
+    QDateTime,
+    QEasingCurve,
+    QObject,
+    QParallelAnimationGroup,
+    QPropertyAnimation,
+    QRunnable,
+    Qt,
+    QThreadPool,
+    QTimer,
+    Signal,
+)
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -32,7 +43,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
-    QTabWidget,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -198,6 +209,81 @@ class DeadlineCard(QFrame):
         lay.addLayout(actions)
 
 
+# --- sidebar -----------------------------------------------------------------
+
+
+class Sidebar(QFrame):
+    """Navigation rail that collapses to icons only. Width changes are animated."""
+
+    EXPANDED, COLLAPSED = 210, 60
+
+    def __init__(self, on_select: Callable[[int, str], None]) -> None:
+        super().__init__()
+        self.setObjectName("sidebar")
+        self.on_select = on_select
+        self.expanded = True
+        self.items: list[tuple[QPushButton, str, str]] = []
+        self.setFixedWidth(self.EXPANDED)
+
+        self.lay = QVBoxLayout(self)
+        self.lay.setContentsMargins(10, 14, 10, 14)
+        self.lay.setSpacing(4)
+
+        top = QHBoxLayout()
+        self.toggle_btn = QPushButton("☰")
+        self.toggle_btn.setObjectName("navToggle")
+        self.toggle_btn.setToolTip("Collapse sidebar")
+        self.toggle_btn.clicked.connect(self.toggle)
+        top.addWidget(self.toggle_btn)
+        self.brand = label("Gameline", name="brand")
+        top.addWidget(self.brand, 1)
+        self.lay.addLayout(top)
+        self.lay.addSpacing(14)
+        self.items_end = self.lay.count()
+        self.lay.addStretch(1)
+
+        self.anim = QParallelAnimationGroup(self)
+        for prop in (b"minimumWidth", b"maximumWidth"):
+            a = QPropertyAnimation(self, prop)
+            a.setDuration(160)
+            a.setEasingCurve(QEasingCurve.Type.OutCubic)
+            self.anim.addAnimation(a)
+        self.anim.finished.connect(self._apply_labels)
+
+    def add_item(self, icon: str, text: str) -> None:
+        btn = QPushButton()
+        btn.setObjectName("navItem")
+        btn.setCheckable(True)
+        btn.setToolTip(text)
+        index = len(self.items)
+        btn.clicked.connect(lambda: self.select(index))
+        self.items.append((btn, icon, text))
+        self.lay.insertWidget(self.items_end + index, btn)
+        self._apply_labels()
+
+    def select(self, index: int) -> None:
+        for i, (btn, _, _) in enumerate(self.items):
+            btn.setChecked(i == index)
+        self.on_select(index, self.items[index][2])
+
+    def toggle(self) -> None:
+        self.expanded = not self.expanded
+        start, end = (self.COLLAPSED, self.EXPANDED) if self.expanded else (self.EXPANDED, self.COLLAPSED)
+        if not self.expanded:
+            self._apply_labels()  # hide text first so it doesn't squash while shrinking
+        for i in range(self.anim.animationCount()):
+            a = self.anim.animationAt(i)
+            a.setStartValue(start)
+            a.setEndValue(end)
+        self.anim.start()
+        self.toggle_btn.setToolTip("Collapse sidebar" if self.expanded else "Expand sidebar")
+
+    def _apply_labels(self) -> None:
+        self.brand.setVisible(self.expanded)
+        for btn, icon, text in self.items:
+            btn.setText(f"{icon}   {text}" if self.expanded else icon)
+
+
 # --- main window -------------------------------------------------------------
 
 
@@ -211,40 +297,58 @@ class MainWindow(QMainWindow):
         self.pool = QThreadPool.globalInstance()
 
         self.setWindowTitle("Gameline")
-        self.resize(720, 760)
+        self.resize(1152, 648)  # 16:9, wide enough for the sidebar plus content
 
         page = QWidget()
         page.setObjectName("page")
-        root = QVBoxLayout(page)
-        root.setContentsMargins(20, 18, 20, 12)
+        outer = QHBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
+        self.stack = QStackedWidget()
+        self.sidebar = Sidebar(self._go_to)
+        for icon, text, widget in (
+            ("📋", "Deadlines", self._deadlines_tab()),
+            ("⚙️", "How you work", self._settings_tab()),
+            ("🎬", "Demo", self._demo_tab()),
+        ):
+            self.stack.addWidget(widget)
+            self.sidebar.add_item(icon, text)
+        outer.addWidget(self.sidebar)
+
+        content = QWidget()
+        content.setObjectName("page")
+        root = QVBoxLayout(content)
+        root.setContentsMargins(24, 18, 24, 12)
         header = QHBoxLayout()
-        header.addWidget(label("Gameline", name="h1"))
+        self.page_title = label("", name="h1")
+        header.addWidget(self.page_title)
         header.addStretch(1)
         self.status_pill = pill("", "ok")
         header.addWidget(self.status_pill)
         root.addLayout(header)
         self.clock_label = label(muted=True)
         root.addWidget(self.clock_label)
-
-        tabs = QTabWidget()
-        tabs.addTab(self._deadlines_tab(), "Deadlines")
-        tabs.addTab(self._settings_tab(), "How you work")
-        tabs.addTab(self._demo_tab(), "Demo")
-        root.addWidget(tabs, 1)
+        root.addWidget(self.stack, 1)
+        outer.addWidget(content, 1)
         self.setCentralWidget(page)
+        self.sidebar.select(0)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(1000)
         self.refresh(force=True)
 
-    # tabs
+    def _go_to(self, index: int, text: str) -> None:
+        self.stack.setCurrentIndex(index)
+        self.page_title.setText(text)
+
+    # pages
 
     def _deadlines_tab(self) -> QWidget:
         tab = QWidget()
         lay = QVBoxLayout(tab)
-        lay.setContentsMargins(0, 10, 0, 0)
+        lay.setContentsMargins(0, 14, 0, 0)
         bar = QHBoxLayout()
         self.add_btn = QPushButton("Add deadline")
         self.add_btn.clicked.connect(self.add_deadline)

@@ -9,9 +9,9 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
 
-LIGHT = dict(bg="#f6f5f2", card="#ffffff", ink="#1d1d1f", muted="#6b6b70", line="#e3e1dc",
+LIGHT = dict(side="#ecebe6", hover="#e2e0da", bg="#f6f5f2", card="#ffffff", ink="#1d1d1f", muted="#6b6b70", line="#e3e1dc",
              ok="#2f7d4f", ok_bg="#dcefe3", risk="#c2410c", risk_bg="#fbe3d6", accent="#3b5bdb")
-DARK = dict(bg="#151517", card="#1f1f22", ink="#ececee", muted="#9a9aa1", line="#2e2e33",
+DARK = dict(side="#1b1b1e", hover="#2a2a2f", bg="#151517", card="#1f1f22", ink="#ececee", muted="#9a9aa1", line="#2e2e33",
             ok="#5cc28a", ok_bg="#1f3a2b", risk="#fb8b4f", risk_bg="#43271a", accent="#7d93ff")
 
 
@@ -40,8 +40,13 @@ def stylesheet() -> str:
     QPushButton[ghost="true"] {{ background: transparent; color: {c['muted']}; border: 1px solid {c['line']}; padding: 4px 10px; font-weight: 500; }}
     QLineEdit, QPlainTextEdit, QDateTimeEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
         background: {c['card']}; border: 1px solid {c['line']}; border-radius: 8px; padding: 5px 8px; }}
-    QTabWidget::pane {{ border: 0; }}
-    QTabBar::tab {{ padding: 6px 14px; color: {c['muted']}; }}
-    QTabBar::tab:selected {{ color: {c['ink']}; font-weight: 600; }}
+    QFrame#sidebar {{ background: {c['side']}; border-right: 1px solid {c['line']}; }}
+    QLabel#brand {{ font-size: 16px; font-weight: 700; padding-left: 4px; }}
+    QPushButton#navToggle {{ background: transparent; color: {c['muted']}; font-size: 18px; padding: 4px 10px; }}
+    QPushButton#navToggle:hover {{ background: {c['hover']}; }}
+    QPushButton#navItem {{ background: transparent; color: {c['muted']}; text-align: left;
+                           padding: 9px 12px; border-radius: 8px; font-weight: 500; }}
+    QPushButton#navItem:hover {{ background: {c['hover']}; color: {c['ink']}; }}
+    QPushButton#navItem:checked {{ background: {c['card']}; color: {c['ink']}; font-weight: 600; }}
     QCheckBox[done="true"] {{ color: {c['muted']}; }}
     """

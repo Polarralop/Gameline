@@ -31,3 +31,14 @@ def test_window_renders_seeded_week(qapp, tmp_path):
     w = MainWindow(ctx, lambda: [])
     assert w.cards.count() == 3  # two cards + stretch
     assert w.status_pill.text() == "1 deadline at risk"
+
+
+def test_sidebar_switches_pages_and_collapses(qapp, tmp_path):
+    w = MainWindow(AppContext(Store(tmp_path / "s.json")), lambda: [])
+    assert w.page_title.text() == "Deadlines"
+    w.sidebar.items[2][0].click()
+    assert w.stack.currentIndex() == 2 and w.page_title.text() == "Demo"
+    w.sidebar.toggle()
+    w.sidebar.anim.setCurrentTime(w.sidebar.anim.duration())
+    assert w.sidebar.maximumWidth() == w.sidebar.COLLAPSED
+    assert w.sidebar.items[0][0].text() == "📋"

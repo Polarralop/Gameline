@@ -81,6 +81,18 @@ class AppContext:
 
     # --- user actions (the UI calls these; they are plain code so tests can too) ---
 
+    def read_syllabus(self, path: str) -> list:
+        """Proposed deadlines from a syllabus PDF (nothing is saved). Raises on failure."""
+        from .syllabus import SyllabusError, read_syllabus
+
+        try:
+            return read_syllabus(path, self.llm, self.clock.now(), self.store.load().deadlines)
+        except SyllabusError:
+            raise
+        except Exception as exc:
+            hint = " Log in to Claude in Preferences." if getattr(exc, "auth", False) else ""
+            raise SyllabusError(f"The AI couldn't read it: {exc}.{hint}") from exc
+
     def create_deadline(self, title: str, due: datetime, notes: str = "") -> str:
         """Save a deadline straight away (no estimate yet). Returns its id."""
         d = Deadline(title=title.strip(), due=due, notes=notes.strip())

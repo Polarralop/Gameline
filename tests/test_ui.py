@@ -167,3 +167,36 @@ def test_game_list_add_and_remove(qapp, tmp_path):
     assert ctx.store.load().tagged_games == ["Minecraft", "Hades"] and gl.input.text() == ""
     w._remove_game("Minecraft")
     assert ctx.store.load().tagged_games == ["Hades"]
+
+
+def test_notifications_help_badge(qapp, tmp_path):
+    w = MainWindow(AppContext(Store(tmp_path / "s.json")), lambda: [])
+    badge = next(l for l in w.findChildren(QtWidgets.QLabel) if l.objectName() == "help")
+    for level in ("No notifications", "Standard", "Interrupting"):
+        assert level in badge.toolTip()
+
+
+def test_bulk_add_flow(qapp, tmp_path):
+    import time
+
+    from gameline.syllabus import Proposal
+    from gameline.ui.window import SyllabusModal
+
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    ctx.create_deadline("CSCA48 A2", datetime(2026, 10, 22, 23, 59))
+    proposals = [Proposal("CSCA48 Assignment 2", datetime(2026, 10, 22, 23, 59), "10%", duplicate_of="CSCA48 A2"),
+                 Proposal("CSCA48 Midterm", datetime(2026, 10, 28, 18, 0), "25%")]
+    ctx.read_syllabus = lambda path: proposals
+    w = MainWindow(ctx, lambda: [])
+    w.start_estimate = lambda did: None  # don't call an LLM here
+    modal = w.bulk_add("/tmp/csca48.pdf")
+    assert isinstance(modal, SyllabusModal)
+    end = time.time() + 5
+    while not hasattr(modal, "checks") and time.time() < end:
+        qapp.processEvents()
+        time.sleep(0.01)
+    assert [b.isChecked() for b in modal.checks] == [False, True]  # duplicate starts unticked
+    assert modal.add_btn.text() == "Add 1 deadline"
+    modal.add_btn.click()
+    titles = [d.title for d in ctx.store.load().deadlines]
+    assert titles == ["CSCA48 A2", "CSCA48 Midterm"]

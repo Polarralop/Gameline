@@ -14,6 +14,7 @@ import tempfile
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from pathlib import Path
 
 from PySide6.QtCore import (
     QDateTime,
@@ -36,6 +37,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDateTimeEdit,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QFrame,
     QGraphicsOpacityEffect,
@@ -69,6 +71,15 @@ NOTIFY_LABELS = {
     NotifyLevel.NORMAL: "Standard",
     NotifyLevel.INTERRUPT: "Interrupting",
 }
+
+NOTIFY_HELP = (
+    "<b>No notifications</b>: Gameline stays quiet. No launch reminders or break alerts; "
+    "the menu bar dot and your deadline cards still show what's at risk.<br><br>"
+    "<b>Standard</b>: a notification when you open a game while behind on a deadline, "
+    "and break alerts once you pass your session limit.<br><br>"
+    "<b>Interrupting</b>: like Standard, but break alerts also bring the Gameline window "
+    "to the front, even over a fullscreen game."
+)
 
 STYLE_LABELS = {Style.SHORT_BURSTS: "Short bursts", Style.MIXED: "Mixed", Style.LONG_SESSIONS: "Long sessions"}
 
@@ -116,6 +127,16 @@ class _DropdownRowDelegate(QStyledItemDelegate):
     def sizeHint(self, option, index):
         size = super().sizeHint(option, index)
         return QSize(size.width(), 32)
+
+
+def help_badge(text: str) -> QLabel:
+    """A small circled ? that explains a setting on hover."""
+    badge = QLabel("?")
+    badge.setObjectName("help")
+    badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    badge.setToolTip(f"<div style='width: 280px'>{text}</div>")
+    badge.setCursor(Qt.CursorShape.WhatsThisCursor)
+    return badge
 
 
 def styled_combo() -> QComboBox:
@@ -217,7 +238,8 @@ class Modal(QWidget):
         self.body = QVBoxLayout(self.card)
         self.body.setContentsMargins(22, 20, 22, 18)
         self.body.setSpacing(10)
-        self.body.addWidget(label(heading, name="modalTitle"))
+        self.heading = label(heading, name="modalTitle")
+        self.body.addWidget(self.heading)
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.close_modal)
 
     def add_buttons(self, confirm_text: str, on_confirm: Callable[[], None], danger: bool = False) -> QPushButton:
@@ -350,6 +372,159 @@ class ConfirmModal(Modal):
         super().close_modal()
         if not self._confirmed and self.on_cancel:
             self.on_cancel()
+
+
+class SyllabusModal(Modal):
+    """Bulk add from a syllabus. Opens straight away in a "reading" state with a
+    spinner, then shows the proposed deadlines as a checklist. Ones that look
+    like existing deadlines are flagged and start unticked."""
+
+    def __init__(self, host: QWidget, filename: str, on_add: Callable[[list], None]) -> None:
+        super().__init__(host, "Reading syllabus", width=560)
+        self.on_add = on_add
+        self.closed = False
+        self.content = QWidget()
+        self.body.addWidget(self.content)
+        lay = QVBoxLayout(self.content)
+        lay.setContentsMargins(0, 0, 0, 0)
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        row.addWidget(Spinner(18))
+        row.addWidget(label(f"Reading {filename}…"), 1)
+        lay.addLayout(row)
+        lay.addWidget(label("Finding assignments, quizzes, tests and exams. This can take a minute.",
+                            muted=True, wrap=True))
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        cancel = QPushButton("Cancel")
+        cancel.setProperty("ghost", True)
+        cancel.clicked.connect(self.close_modal)
+        buttons.addWidget(cancel)
+        lay.addSpacing(4)
+        lay.addLayout(buttons)
+        self.open()
+
+    def close_modal(self) -> None:
+        self.closed = True  # a result arriving later is ignored
+        super().close_modal()
+
+    def _replace_content(self) -> QVBoxLayout:
+        self.content.hide()
+        self.content.deleteLater()
+        self.content = QWidget()
+        self.body.addWidget(self.content)
+        lay = QVBoxLayout(self.content)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(10)
+        return lay
+
+    def _resize_card(self) -> None:
+        # New content isn't measured until it's shown and laid out; do that
+        # before resizing the card, or it keeps the old (smaller) size.
+        self.content.show()
+        self.body.activate()
+        self._center_card()
+
+    def show_error(self, message: str) -> None:
+        self.heading.setText("Couldn't read that syllabus")
+        lay = self._replace_content()
+        lay.addWidget(label(message, wrap=True))
+        row = QHBoxLayout()
+        row.addStretch(1)
+        ok = QPushButton("OK")
+        ok.clicked.connect(self.close_modal)
+        row.addWidget(ok)
+        lay.addLayout(row)
+        self._resize_card()
+
+    def show_proposals(self, proposals: list) -> None:
+        self.proposals = proposals
+        n = len(proposals)
+        if n == 0:
+            self.show_error("No dated deadlines were found in that PDF.")
+            return
+        self.heading.setText(f"Found {n} deadline{'s' if n != 1 else ''}")
+        lay = self._replace_content()
+        dupes = sum(1 for p in proposals if p.duplicate_of)
+        past = sum(1 for p in proposals if p.past and not p.duplicate_of)
+        intro = "Untick anything you don't want to add."
+        notes = []
+        if dupes:
+            notes.append(f"{dupes} already on your list")
+        if past:
+            notes.append(f"{past} already past")
+        if notes:
+            intro += f" Unticked to start: {' and '.join(notes)}."
+        lay.addWidget(label(intro, muted=True, wrap=True))
+
+        listing = QWidget()
+        rows = QVBoxLayout(listing)
+        rows.setContentsMargins(0, 0, 6, 0)
+        rows.setSpacing(2)
+        self.checks: list[QCheckBox] = []
+        for prop in proposals:
+            item = QFrame()
+            item.setObjectName("proposal")
+            h = QHBoxLayout(item)
+            h.setContentsMargins(8, 6, 8, 6)
+            h.setSpacing(10)
+            box = QCheckBox()
+            box.setChecked(prop.suggested)
+            box.toggled.connect(self._update_count)
+            box.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.checks.append(box)
+            h.addWidget(box, 0, Qt.AlignmentFlag.AlignTop)
+            text = QVBoxLayout()
+            text.setSpacing(1)
+            title = label(prop.title, name="task", wrap=True)
+            title.setCursor(Qt.CursorShape.PointingHandCursor)
+            title.mousePressEvent = lambda e, b=box: b.toggle()
+            text.addWidget(title)
+            meta = f"Due {fmt_dt(prop.due)}" + (f" · {prop.notes}" if prop.notes else "")
+            text.addWidget(label(meta, muted=True, wrap=True))
+            if prop.duplicate_of:
+                text.addWidget(label(f"Looks like “{prop.duplicate_of}”, which is already on your list",
+                                     name="warning", wrap=True))
+            elif prop.past:
+                text.addWidget(label("Already past", muted=True))
+            h.addLayout(text, 1)
+            rows.addWidget(item)
+        rows.addStretch(1)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(listing)
+        for w_ in (scroll, scroll.viewport(), listing):
+            w_.setObjectName("proposalList")  # transparent, so it sits on the card colour
+        listing.adjustSize()
+        scroll.setFixedHeight(min(360, listing.sizeHint().height() + 2))
+        lay.addWidget(scroll)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        cancel = QPushButton("Cancel")
+        cancel.setProperty("ghost", True)
+        cancel.clicked.connect(self.close_modal)
+        self.add_btn = QPushButton()
+        self.add_btn.clicked.connect(self._add)
+        buttons.addWidget(cancel)
+        buttons.addWidget(self.add_btn)
+        lay.addLayout(buttons)
+        self._update_count()
+        self._resize_card()
+
+    def selected(self) -> list:
+        return [p for p, box in zip(self.proposals, self.checks) if box.isChecked()]
+
+    def _update_count(self) -> None:
+        n = len(self.selected())
+        self.add_btn.setText(f"Add {n} deadline{'s' if n != 1 else ''}")
+        self.add_btn.setEnabled(n > 0)
+
+    def _add(self) -> None:
+        chosen = self.selected()
+        self.close_modal()
+        self.on_add(chosen)
 
 
 class AlertModal(Modal):
@@ -941,6 +1116,11 @@ class MainWindow(QMainWindow):
         self.add_btn = QPushButton("Add deadline")
         self.add_btn.clicked.connect(self.add_deadline)
         bar.addWidget(self.add_btn)
+        bulk = QPushButton("Bulk add from syllabus")
+        bulk.setObjectName("secondary")
+        bulk.setToolTip("Pick a course syllabus PDF; Gameline proposes its deadlines for you to review")
+        bulk.clicked.connect(self.bulk_add)
+        bar.addWidget(bulk)
         bar.addStretch(1)
         lay.addLayout(bar)
         lay.addSpacing(12)
@@ -1015,7 +1195,14 @@ class MainWindow(QMainWindow):
         form.addRow(label("YOUR ROUTINE", name="h2"))
         form.addRow("Working style", self.style_box)
         form.addRow("Work hours per day", self.daily_hours)
-        form.addRow("Notifications", self.notify_box)
+        notify_row = QWidget()
+        nr = QHBoxLayout(notify_row)
+        nr.setContentsMargins(0, 0, 0, 0)
+        nr.setSpacing(10)
+        nr.addWidget(self.notify_box)
+        nr.addWidget(help_badge(NOTIFY_HELP))
+        nr.addStretch(1)
+        form.addRow("Notifications", notify_row)
         form.addRow("Gaming session limit", self.max_minutes)
         form.addRow("Repeat break alert every", self.repeat_minutes)
         form.addRow("", save)
@@ -1194,6 +1381,33 @@ class MainWindow(QMainWindow):
             self.start_estimate(self.ctx.create_deadline(title, due, notes))
 
         return DeadlineModal(self.centralWidget(), self.ctx.clock.now(), save)
+
+    def bulk_add(self, path: str | None = None) -> SyllabusModal | None:
+        """Pick a syllabus PDF, read it in the background, then review proposals."""
+        if path is None:
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Choose a syllabus PDF", str(Path.home() / "Downloads"), "PDF files (*.pdf)")
+            if not path:
+                return None
+        self._syllabus = SyllabusModal(self.centralWidget(), Path(path).name, self._add_proposals)
+        self.pool.start(Job(lambda: ("ok", self.ctx.read_syllabus(path)), self._syllabus_done))
+        return self._syllabus
+
+    def _syllabus_done(self, result) -> None:
+        modal = getattr(self, "_syllabus", None)
+        if modal is None or modal.closed:
+            return  # cancelled while reading
+        if isinstance(result, tuple):
+            modal.show_proposals(result[1])
+        else:  # Job hands back error text on failure
+            modal.show_error(" ".join(result))
+
+    def _add_proposals(self, proposals: list) -> None:
+        for p in proposals:
+            self.start_estimate(self.ctx.create_deadline(p.title, p.due, p.notes))
+        if proposals:
+            n = len(proposals)
+            self.toast(f"Added {n} deadline{'s' if n != 1 else ''}; estimating now", "ok")
 
     def edit_deadline(self, d: Deadline) -> DeadlineModal:
         def save(title: str, due: datetime, notes: str) -> None:

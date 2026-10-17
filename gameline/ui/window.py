@@ -62,7 +62,7 @@ from PySide6.QtWidgets import (
 
 from ..context import AppContext
 from ..llm import BACKENDS
-from ..llm.claude_cli import AccountStatus, account_status, open_login_terminal
+from ..llm.claude_cli import AccountStatus, account_status, cached_status, forget_status, open_login_terminal
 from ..llm.claude_cli import logout as claude_logout
 from ..models import Deadline, NotifyLevel, Style, WorkingStyle, subject_of
 from ..paths import icons_dir
@@ -1369,7 +1369,18 @@ class MainWindow(QMainWindow):
         self.claude_btn.setMinimumHeight(36)
         self.claude_status = label("", muted=True)  # one line, so nothing gets clipped
         form.addRow("Claude account", self.claude_btn)
-        form.addRow("", self.claude_status)
+        status_row = QWidget()
+        sr = QHBoxLayout(status_row)
+        sr.setContentsMargins(0, 0, 0, 0)
+        sr.setSpacing(8)
+        sr.addWidget(self.claude_status)
+        recheck = QPushButton("Check again")
+        recheck.setObjectName("linkButton")
+        recheck.setToolTip("Login status is remembered for 12 hours; this checks right now")
+        recheck.clicked.connect(lambda: self.check_claude(force=True))
+        sr.addWidget(recheck)
+        sr.addStretch(1)
+        form.addRow("", status_row)
 
         # --- danger zone ------------------------------------------------------
         form.addRow(QLabel(""))
@@ -1909,10 +1920,16 @@ class MainWindow(QMainWindow):
         self.ctx.set_backend(self.backend_box.currentData())
         self.toast(f"Estimates now use: {self.backend_box.currentText()}")
 
-    def check_claude(self) -> None:
-        """Ask the CLI for login status (plus a tiny test call) off the GUI thread."""
+    def check_claude(self, force: bool = False) -> None:
+        """Show the Claude login status. Uses the saved result from the last
+        12 hours unless forced; otherwise asks the CLI off the GUI thread."""
         if self._claude_checking:
             return
+        if not force and self.account_checker is account_status:
+            cached = cached_status()
+            if cached is not None:
+                self._show_claude(cached)
+                return
         self._claude_checking = True
         self._show_claude(None)
         self.pool.start(Job(self.account_checker, self._claude_checked))
@@ -1969,6 +1986,7 @@ class MainWindow(QMainWindow):
                 do_logout,
             )
             return
+        forget_status()
         open_login_terminal()
         self._login_polls = 0
         self.login_timer.start()
@@ -1978,7 +1996,7 @@ class MainWindow(QMainWindow):
         self._login_polls += 1
         if self._login_polls > 30:  # about 3 minutes
             self.login_timer.stop()
-        self.check_claude()
+        self.check_claude(force=True)
 
     def seed_demo(self) -> None:
         self.ctx.seed_demo_data()

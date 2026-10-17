@@ -71,7 +71,10 @@ def _ask(prompt: str, system: str, extra: list[str], timeout: float) -> dict[str
         raise ClaudeCLIError((proc.stderr or proc.stdout or "No output from claude").strip()[:300])
     if out.get("is_error"):
         message = str(out.get("result") or out.get("terminal_reason") or "Claude returned an error")
-        raise ClaudeCLIError(message, auth=any(h in message.lower() for h in AUTH_HINTS))
+        auth = any(h in message.lower() for h in AUTH_HINTS)
+        if auth:
+            forget_status()  # the cached "logged in" is no longer true
+        raise ClaudeCLIError(message, auth=auth)
     return out
 
 
@@ -126,6 +129,51 @@ class AccountStatus:
         return self.installed and self.logged_in and self.working is not False
 
 
+# --- cached status --------------------------------------------------------
+# Checking runs the CLI (and a tiny test call), which is slow and can make
+# macOS ask about folder access, so the result is remembered for a while.
+
+CACHE_HOURS = 12
+
+
+def _cache_file():
+    from ..paths import data_dir
+
+    return data_dir() / "claude_status.json"
+
+
+def cached_status(max_age_hours: float = CACHE_HOURS) -> AccountStatus | None:
+    """The last saved status if it's recent enough, else None."""
+    import time
+
+    try:
+        data = json.loads(_cache_file().read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if time.time() - data.get("checked_at", 0) > max_age_hours * 3600:
+        return None
+    data.pop("checked_at", None)
+    return AccountStatus(**data)
+
+
+def save_status(status: AccountStatus) -> None:
+    import time
+    from dataclasses import asdict
+
+    try:
+        _cache_file().write_text(json.dumps({**asdict(status), "checked_at": time.time()}))
+    except OSError:
+        pass
+
+
+def forget_status() -> None:
+    """Drop the cached status (after login, logout, or a failed call)."""
+    try:
+        _cache_file().unlink()
+    except OSError:
+        pass
+
+
 def account_status(verify: bool = True) -> AccountStatus:
     """Read `claude auth status`; with verify, also make a tiny real call,
     because a saved login can be expired while auth status still says logged in."""
@@ -148,6 +196,8 @@ def account_status(verify: bool = True) -> AccountStatus:
         except (ClaudeCLIError, subprocess.TimeoutExpired) as exc:
             status.working = False
             status.message = str(exc)
+    if verify:
+        save_status(status)
     return status
 
 
@@ -161,4 +211,5 @@ def open_login_terminal() -> None:
 
 
 def logout() -> None:
+    forget_status()
     _run(["auth", "logout"], timeout=30)

@@ -349,10 +349,12 @@ class Sidebar(QFrame):
         self.brand.setGeometry(self.COLLAPSED - 12, 0, self.EXPANDED - self.COLLAPSED, 34)
         # Fade the brand in step with the width instead of popping it in/out.
         self.brand_fx = QGraphicsOpacityEffect(self.brand)
+        self.brand_fx.setOpacity(1.0)  # Qt's default is 0.7
         self.brand.setGraphicsEffect(self.brand_fx)
         self.lay.addWidget(top, 0, Qt.AlignmentFlag.AlignLeft)
         self.lay.addSpacing(14)
         self.items_end = self.lay.count()
+        self._top_count = 0
         self.lay.addStretch(1)
 
         self.anim = QParallelAnimationGroup(self)
@@ -364,7 +366,8 @@ class Sidebar(QFrame):
         self.anim.finished.connect(lambda: None if self.expanded else self._apply_labels())
         self.anim.animationAt(0).valueChanged.connect(self._fade_brand)
 
-    def add_item(self, icon: str, text: str) -> None:
+    def add_item(self, icon: str, text: str, bottom: bool = False) -> None:
+        """Add a nav button. bottom=True pins it below the stretch, at the foot of the bar."""
         btn = QPushButton()
         btn.setObjectName("navItem")
         btn.setCheckable(True)
@@ -372,7 +375,11 @@ class Sidebar(QFrame):
         index = len(self.items)
         btn.clicked.connect(lambda: self.select(index))
         self.items.append((btn, icon, text))
-        self.lay.insertWidget(self.items_end + index, btn)
+        if bottom:
+            self.lay.addWidget(btn)
+        else:
+            self.lay.insertWidget(self.items_end + self._top_count, btn)
+            self._top_count += 1
         self._apply_labels()
 
     def select(self, index: int) -> None:
@@ -426,13 +433,13 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.sidebar = Sidebar(self._go_to)
-        for icon, text, widget in (
-            ("📋", "Deadlines", self._deadlines_tab()),
-            ("⚙️", "How you work", self._settings_tab()),
-            ("🎬", "Demo", self._demo_tab()),
+        for icon, text, widget, bottom in (
+            ("📋", "Deadlines", self._deadlines_tab(), False),
+            ("🎬", "Demo", self._demo_tab(), False),
+            ("⚙️", "Preferences", self._settings_tab(), True),
         ):
             self.stack.addWidget(widget)
-            self.sidebar.add_item(icon, text)
+            self.sidebar.add_item(icon, text, bottom=bottom)
         outer.addWidget(self.sidebar)
 
         content = QWidget()

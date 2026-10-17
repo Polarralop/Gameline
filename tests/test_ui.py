@@ -46,8 +46,12 @@ def test_window_renders_seeded_week(qapp, tmp_path):
 def test_sidebar_switches_pages_and_collapses(qapp, tmp_path):
     w = MainWindow(AppContext(Store(tmp_path / "s.json")), lambda: [])
     assert w.page_title.text() == "Deadlines"
+    w.sidebar.items[1][0].click()
+    assert w.stack.currentIndex() == 1 and w.page_title.text() == "Demo"
     w.sidebar.items[2][0].click()
-    assert w.stack.currentIndex() == 2 and w.page_title.text() == "Demo"
+    assert w.page_title.text() == "Preferences"
+    lay = w.sidebar.lay
+    assert lay.indexOf(w.sidebar.items[2][0]) == lay.count() - 1  # pinned to the bottom
     w.sidebar.toggle()
     w.sidebar.anim.setCurrentTime(w.sidebar.anim.duration())
     assert w.sidebar.maximumWidth() == w.sidebar.COLLAPSED

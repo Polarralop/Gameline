@@ -2024,7 +2024,7 @@ class MainWindow(QMainWindow):
             ConfirmModal(
                 self.centralWidget(),
                 "Log out of Claude",
-                "Log Claude Code on this Mac out of your account?",
+                "Log Claude Code on this computer out of your account?",
                 "This also logs out the claude command in your terminal.",
                 "Log out",
                 do_logout,

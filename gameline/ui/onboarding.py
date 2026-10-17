@@ -319,7 +319,7 @@ class OnboardingModal(Modal):
         self.ai_hint.setText({
             "gemini": "Uses the Gemini API key from your .env file.",
             "claude": "Uses the Claude API key from your .env file.",
-            "claude-cli": "Uses your Claude subscription through Claude Code on this Mac. Just log in below.",
+            "claude-cli": "Uses your Claude subscription through Claude Code on this computer. Just log in below.",
             "stub": "No AI: rough guesses from the deadline's title. Works offline.",
         }.get(key, ""))
         self.login_row.setVisible(key == "claude-cli")
@@ -476,7 +476,7 @@ class OnboardingModal(Modal):
                 ConfirmModal(
                     self.parent(),
                     "Continue without logging in?",
-                    "Claude subscription estimates only work once Claude Code on this Mac is logged in. "
+                    "Claude subscription estimates only work once Claude Code on this computer is logged in. "
                     "Until then, new deadlines won't get estimates. You can log in later in Preferences.",
                     "Estimates will fail until you log in.",
                     "Continue anyway",

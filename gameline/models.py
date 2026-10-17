@@ -1,7 +1,7 @@
 """Core data: deadlines, the user's working style, and LLM estimates.
 
 Plain dataclasses with to_dict/from_dict so state.json stays readable and
-the Flask forms can build them directly.
+the UI can build them directly.
 """
 
 from __future__ import annotations
@@ -10,6 +10,12 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
+
+
+class NotifyLevel(str, Enum):
+    OFF = "off"  # no reminders or alerts; the menu bar dot still shows risk
+    NORMAL = "normal"  # desktop notifications
+    INTERRUPT = "interrupt"  # long-session alerts also bring the Gameline window forward
 
 
 class Style(str, Enum):
@@ -25,9 +31,11 @@ class WorkingStyle:
     daily_work_hours: float = 4.0
     # Gaming session length after which a long-session alert fires.
     max_gaming_minutes: int = 120
+    notify_level: NotifyLevel = NotifyLevel.NORMAL
 
     def to_dict(self) -> dict:
-        return {**asdict(self), "style": self.style.value}
+        # Style(...) / NotifyLevel(...) also accept plain strings (Qt hands enum data back as str).
+        return {**asdict(self), "style": Style(self.style).value, "notify_level": NotifyLevel(self.notify_level).value}
 
     @classmethod
     def from_dict(cls, d: dict) -> WorkingStyle:
@@ -35,6 +43,7 @@ class WorkingStyle:
             style=Style(d.get("style", Style.MIXED.value)),
             daily_work_hours=float(d.get("daily_work_hours", 4.0)),
             max_gaming_minutes=int(d.get("max_gaming_minutes", 120)),
+            notify_level=NotifyLevel(d.get("notify_level", NotifyLevel.NORMAL.value)),
         )
 
 

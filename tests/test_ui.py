@@ -134,3 +134,36 @@ def test_collapse_arrow_hides_tasks(qapp, tmp_path):
     rows[0].box.click()  # tick a task: saved, and updated without rebuilding any card
     assert ctx.store.load().get(did).estimate.chunks[0].done
     assert w.card_widgets == before
+
+
+def test_interrupt_level_needs_confirmation(qapp, tmp_path):
+    from gameline.models import NotifyLevel
+    from gameline.ui.window import ConfirmModal
+
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    w = MainWindow(ctx, lambda: [])
+    w.account_checker = lambda: AccountStatus(installed=False)
+    box = w.notify_box
+    box.setCurrentIndex(box.findData(NotifyLevel.INTERRUPT))
+    modal = w.centralWidget().findChildren(ConfirmModal)[-1]
+    modal.close_modal()  # cancel
+    assert box.currentData() == NotifyLevel.NORMAL
+    assert ctx.store.load().working_style.notify_level == NotifyLevel.NORMAL
+    box.setCurrentIndex(box.findData(NotifyLevel.INTERRUPT))
+    w.centralWidget().findChildren(ConfirmModal)[-1].confirm_btn.click()
+    assert ctx.store.load().working_style.notify_level == NotifyLevel.INTERRUPT
+    box.setCurrentIndex(box.findData(NotifyLevel.OFF))
+    assert not w.max_minutes.isEnabled()
+
+
+def test_game_list_add_and_remove(qapp, tmp_path):
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    w = MainWindow(ctx, lambda: [])
+    gl = w.game_list
+    gl.input.setText("Minecraft")
+    gl._add()
+    gl.input.setText("Hades")
+    gl.input.returnPressed.emit()
+    assert ctx.store.load().tagged_games == ["Minecraft", "Hades"] and gl.input.text() == ""
+    w._remove_game("Minecraft")
+    assert ctx.store.load().tagged_games == ["Hades"]

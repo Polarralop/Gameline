@@ -12,7 +12,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 
 from .clock import Clock
-from .models import WorkingStyle
+from .models import NotifyLevel, WorkingStyle
 from .notify import notify as desktop_notify
 from .planner import DeadlineStatus, at_risk_deadlines, prep_hours_needed
 from .store import Store
@@ -65,15 +65,21 @@ class Reminders(Listener):
         store: Store,
         clock: Clock,
         notify: Callable[[str, str], object] = desktop_notify,
+        interrupt: Callable[[str, str], object] | None = None,
     ) -> None:
         self.store = store
         self.clock = clock
         self.notify = notify
+        # Called (from the watcher thread) for long-session alerts at the
+        # Interrupting level; the UI uses it to bring its window forward.
+        self.interrupt = interrupt
         # session key -> app time of the last long-session alert
         self._last_alert: dict[str, datetime] = {}
 
     def on_game_started(self, session: Session) -> None:
         state = self.store.load()
+        if state.working_style.notify_level == NotifyLevel.OFF:
+            return
         risky = at_risk_deadlines(state.deadlines, state.working_style, self.clock.now())
         if not risky:
             log.info("On track; staying quiet for %s", session.game.name)
@@ -87,6 +93,9 @@ class Reminders(Listener):
         if not sessions:
             return
         state = self.store.load()
+        level = state.working_style.notify_level
+        if level == NotifyLevel.OFF:
+            return
         prep = prep_hours_needed(state.deadlines, state.working_style, now)
         limit = session_limit(state.working_style, prep)
         for s in sessions:
@@ -101,4 +110,7 @@ class Reminders(Listener):
             body = f"You've played {_fmt_hours(hours)}."
             if prep > 0:
                 body += f" {_fmt_hours(prep)} of work is due in the next 2 days."
-            self.notify(f"Time for a break from {s.game.name}?", body)
+            title = f"Time for a break from {s.game.name}?"
+            self.notify(title, body)
+            if level == NotifyLevel.INTERRUPT and self.interrupt:
+                self.interrupt(title, body)

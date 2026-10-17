@@ -2,7 +2,7 @@ from datetime import datetime
 
 from gameline.context import AppContext
 from gameline.llm.stub import StubLLM
-from gameline.models import Style, WorkingStyle
+from gameline.models import NotifyLevel, Style, WorkingStyle
 from gameline.store import Store
 
 
@@ -29,11 +29,22 @@ def test_seed_demo_has_one_at_risk(tmp_path):
     assert ctx.status_line() == "1 deadline at risk"
 
 
-def test_save_settings(tmp_path):
+def test_save_settings_keeps_notify_level(tmp_path):
     ctx = make(tmp_path)
-    ctx.save_settings(WorkingStyle(style=Style.LONG_SESSIONS, max_gaming_minutes=90), ["Minecraft", " ", "Hades"])
+    ctx.set_notify_level(NotifyLevel.OFF)
+    ctx.save_settings(WorkingStyle(style=Style.LONG_SESSIONS, max_gaming_minutes=90))
     s = ctx.store.load()
-    assert s.working_style.max_gaming_minutes == 90 and s.tagged_games == ["Minecraft", "Hades"]
+    assert s.working_style.max_gaming_minutes == 90 and s.working_style.notify_level == NotifyLevel.OFF
+
+
+def test_tagged_games_add_remove(tmp_path):
+    ctx = make(tmp_path)
+    assert ctx.add_tagged_game(" Minecraft ")
+    assert not ctx.add_tagged_game("minecraft")  # duplicate
+    assert not ctx.add_tagged_game("  ")
+    ctx.add_tagged_game("Hades")
+    ctx.remove_tagged_game("Minecraft")
+    assert ctx.store.load().tagged_games == ["Hades"]
 
 
 def test_estimate_does_not_overwrite_edits_made_meanwhile(tmp_path):

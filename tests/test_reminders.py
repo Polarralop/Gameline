@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 from gameline.clock import FixedClock
 from gameline.detectors import DetectedGame
-from gameline.models import Deadline, Estimate, WorkingStyle
+from gameline.models import Deadline, Estimate, NotifyLevel, WorkingStyle
 from gameline.reminders import Reminders, session_limit
 from gameline.store import State, Store
 from gameline.watcher import Session
@@ -58,3 +58,26 @@ def test_prep_work_shortens_limit():
     assert session_limit(style, 0) == timedelta(minutes=120)
     assert session_limit(style, 4) == timedelta(minutes=90)
     assert session_limit(style, 100) == timedelta(minutes=60)
+
+
+def test_off_level_silences_everything(tmp_path):
+    r, clock, sent = setup(tmp_path, [dl("CSCA48 A2", 1, 8)], max_minutes=60)
+    st = r.store.load(); st.working_style.notify_level = NotifyLevel.OFF; r.store.save(st)
+    s = Session(DetectedGame("Factorio", "x"), NOW)
+    r.on_game_started(s)
+    clock.advance(hours=3)
+    r.on_tick([s], clock.now())
+    assert sent == []
+
+
+def test_interrupt_level_only_interrupts_long_sessions(tmp_path):
+    r, clock, sent = setup(tmp_path, [dl("CSCA48 A2", 1, 8)], max_minutes=60)
+    st = r.store.load(); st.working_style.notify_level = NotifyLevel.INTERRUPT; r.store.save(st)
+    interrupts = []
+    r.interrupt = lambda t, b: interrupts.append(t)
+    s = Session(DetectedGame("Factorio", "x"), NOW)
+    r.on_game_started(s)
+    assert len(sent) == 1 and interrupts == []  # launch: banner only
+    clock.advance(hours=2)
+    r.on_tick([s], clock.now())
+    assert len(sent) == 2 and interrupts == ["Time for a break from Factorio?"]

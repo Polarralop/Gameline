@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 import threading
 
-from PySide6.QtCore import QRect, Qt, QTimer
+from PySide6.QtCore import QObject, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
@@ -39,12 +39,22 @@ def make_icon(at_risk: bool) -> QIcon:
     return QIcon(pm)
 
 
+class InterruptBridge(QObject):
+    """Carries interrupting alerts from the watcher thread to the GUI thread.
+    Emitting a Qt signal across threads queues the call onto the receiver's thread."""
+
+    fired = Signal(str, str)
+
+
 class GamelineApp:
     def __init__(self, qapp: QApplication) -> None:
         self.qapp = qapp
         self.ctx = AppContext()
-        self.watcher = Watcher(self.ctx.detectors, Reminders(self.ctx.store, self.ctx.clock), clock=self.ctx.clock, interval=3)
+        self.bridge = InterruptBridge()
+        reminders = Reminders(self.ctx.store, self.ctx.clock, interrupt=self.bridge.fired.emit)
+        self.watcher = Watcher(self.ctx.detectors, reminders, clock=self.ctx.clock, interval=3)
         self.window = MainWindow(self.ctx, self.playing)
+        self.bridge.fired.connect(self.window.interrupt)
         self.icons = {False: make_icon(False), True: make_icon(True)}
 
         self.tray = QSystemTrayIcon(self.icons[False])

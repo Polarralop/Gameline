@@ -130,6 +130,14 @@ def stylesheet() -> str:
     QScrollBar[idle="true"]::handle:vertical {{ background: transparent; }}
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
     QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
+    QSpinBox:disabled, QDoubleSpinBox:disabled {{ color: {c['muted']}; background: {c['bg']}; }}
+    QPushButton#listToggle {{ background: transparent; color: {c['muted']}; padding: 2px 0; font-weight: 500; text-align: left; }}
+    QPushButton#listToggle:hover {{ color: {c['ink']}; }}
+    QFrame#gameList {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 8px; }}
+    QFrame#gameItem {{ border-radius: 6px; }}
+    QFrame#gameItem:hover {{ background: {c['bg']}; }}
+    QToolButton#removeGame {{ background: transparent; border: 0; color: {c['muted']}; padding: 2px 6px; border-radius: 4px; }}
+    QToolButton#removeGame:hover {{ color: {c['risk']}; background: {c['risk_bg']}; }}
     QToolButton#collapse {{ background: transparent; border: 0; border-radius: 6px; padding: 4px; }}
     QToolButton#collapse:hover {{ background: {c['line']}; }}
     """

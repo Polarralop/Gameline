@@ -9,6 +9,7 @@ Qt patterns used here:
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from datetime import datetime
 
@@ -54,11 +55,30 @@ from ..context import AppContext
 from ..llm import BACKENDS
 from ..llm.claude_cli import AccountStatus, account_status, open_login_terminal
 from ..llm.claude_cli import logout as claude_logout
-from ..models import Deadline, Style, WorkingStyle
+from ..models import Deadline, NotifyLevel, Style, WorkingStyle
 from ..planner import DeadlineStatus, assess
 from .theme import colors, icon_path
 
+NOTIFY_LABELS = {
+    NotifyLevel.OFF: "No notifications",
+    NotifyLevel.NORMAL: "Notifications",
+    NotifyLevel.INTERRUPT: "Interrupting notifications",
+}
+
 STYLE_LABELS = {Style.SHORT_BURSTS: "Short bursts", Style.MIXED: "Mixed", Style.LONG_SESSIONS: "Long sessions"}
+
+
+def bring_app_to_front() -> None:
+    """Qt can raise a window but macOS won't switch to the app on its own, so
+    ask AppKit directly. No-op elsewhere or if it isn't available."""
+    if sys.platform != "darwin":
+        return
+    try:
+        from rubicon.objc import ObjCClass
+
+        ObjCClass("NSApplication").sharedApplication.activateIgnoringOtherApps_(True)
+    except Exception:
+        pass
 
 
 def label(text: str = "", *, name: str | None = None, muted: bool = False, wrap: bool = False) -> QLabel:
@@ -250,9 +270,12 @@ class ConfirmModal(Modal):
         warning: str,
         confirm_text: str,
         on_confirm: Callable[[], None],
+        on_cancel: Callable[[], None] | None = None,
     ) -> None:
-        super().__init__(host, heading, width=400)
+        super().__init__(host, heading, width=420)
         self.on_confirm = on_confirm
+        self.on_cancel = on_cancel
+        self._confirmed = False
         self.body.addWidget(label(message, wrap=True))
         warn = label(warning, name="warning", wrap=True)
         self.body.addWidget(warn)
@@ -260,8 +283,31 @@ class ConfirmModal(Modal):
         self.open(focus=self.confirm_btn)
 
     def _confirm(self) -> None:
+        self._confirmed = True
         self.close_modal()
         self.on_confirm()
+
+    def close_modal(self) -> None:
+        super().close_modal()
+        if not self._confirmed and self.on_cancel:
+            self.on_cancel()
+
+
+class AlertModal(Modal):
+    """A message with one button, for interrupting long-session alerts."""
+
+    def __init__(self, host: QWidget, heading: str, message: str, button: str = "Got it") -> None:
+        super().__init__(host, heading, width=420)
+        self.body.addWidget(label(message, wrap=True))
+        row = QHBoxLayout()
+        row.addStretch(1)
+        ok = QPushButton(button)
+        ok.clicked.connect(self.close_modal)
+        row.addWidget(ok)
+        self.body.addSpacing(4)
+        self.body.addLayout(row)
+        self.ok_btn = ok
+        self.open(focus=ok)
 
 
 # --- spinner and toasts --------------------------------------------------------
@@ -563,6 +609,92 @@ class DeadlineCard(QFrame):
         self.arrow.setToolTip("Show tasks" if collapsed else "Hide tasks")
 
 
+# --- tagged games list ---------------------------------------------------------
+
+
+class GameList(QWidget):
+    """Type an app name and press Enter (or Add) to tag it as a game. The
+    collapsible list below shows tagged apps, each with a ✕ to remove it."""
+
+    WIDTH = 320
+
+    def __init__(self, on_add: Callable[[str], bool], on_remove: Callable[[str], None]) -> None:
+        super().__init__()
+        self.on_add, self.on_remove = on_add, on_remove
+        self.expanded = True
+        self.setFixedWidth(self.WIDTH)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.input = QLineEdit()
+        self.input.setPlaceholderText("Type an app name, e.g. Minecraft")
+        self.input.setFixedHeight(36)
+        self.input.returnPressed.connect(self._add)
+        add = QPushButton("Add")
+        add.setFixedSize(64, 36)
+        add.clicked.connect(self._add)
+        row.addWidget(self.input, 1)
+        row.addWidget(add)
+        lay.addLayout(row)
+
+        self.toggle = QPushButton()
+        self.toggle.setObjectName("listToggle")
+        self.toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.toggle.clicked.connect(self._toggle)
+        lay.addWidget(self.toggle, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self.list = QFrame()
+        self.list.setObjectName("gameList")
+        self.rows = QVBoxLayout(self.list)
+        self.rows.setContentsMargins(4, 4, 4, 4)
+        self.rows.setSpacing(0)
+        lay.addWidget(self.list)
+
+    def set_games(self, games: list[str]) -> None:
+        while self.rows.count():
+            w = self.rows.takeAt(0).widget()
+            if w:
+                w.hide()
+                w.deleteLater()
+        for name in games:
+            item = QFrame()
+            item.setObjectName("gameItem")
+            h = QHBoxLayout(item)
+            h.setContentsMargins(10, 4, 4, 4)
+            h.addWidget(QLabel(name), 1)
+            x = QToolButton()
+            x.setObjectName("removeGame")
+            x.setText("✕")
+            x.setToolTip(f"Stop treating {name} as a game")
+            x.setCursor(Qt.CursorShape.PointingHandCursor)
+            x.clicked.connect(lambda _=False, n=name: self.on_remove(n))
+            h.addWidget(x)
+            self.rows.addWidget(item)
+        n = len(games)
+        self.toggle.setVisible(n > 0)
+        self._count = n
+        self._apply()
+
+    def _apply(self) -> None:
+        n = getattr(self, "_count", 0)
+        noun = "app" if n == 1 else "apps"
+        self.toggle.setText(f"{'▾' if self.expanded else '▸'}  {n} {noun} tagged as games")
+        self.list.setVisible(self.expanded and n > 0)
+
+    def _toggle(self) -> None:
+        self.expanded = not self.expanded
+        self._apply()
+
+    def _add(self) -> None:
+        if self.on_add(self.input.text()):
+            self.input.clear()
+            self.expanded = True
+            self._apply()
+
+
 # --- sidebar -----------------------------------------------------------------
 
 
@@ -765,9 +897,21 @@ class MainWindow(QMainWindow):
         return tab
 
     def _settings_tab(self) -> QWidget:
+        # The page is taller than the window, so it scrolls.
         tab = QWidget()
-        form = QFormLayout(tab)
-        form.setContentsMargins(0, 16, 0, 0)
+        tab.setObjectName("page")
+        outer = QVBoxLayout(tab)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        inner = QWidget()
+        inner.setObjectName("page")
+        scroll.setWidget(inner)
+        outer.addWidget(scroll)
+
+        form = QFormLayout(inner)
+        form.setContentsMargins(0, 16, 0, 16)
         form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         form.setHorizontalSpacing(24)
         form.setVerticalSpacing(12)
@@ -778,21 +922,29 @@ class MainWindow(QMainWindow):
         self.daily_hours.setRange(0.5, 16)
         self.daily_hours.setSingleStep(0.5)
         self.daily_hours.setSuffix(" h")
+        self.notify_box = QComboBox()
+        for level, text in NOTIFY_LABELS.items():
+            self.notify_box.addItem(text, level)
+        self.notify_box.currentIndexChanged.connect(self._notify_changed)
         self.max_minutes = QSpinBox()
         self.max_minutes.setRange(15, 600)
         self.max_minutes.setSingleStep(15)
         self.max_minutes.setSuffix(" min")
-        self.tags = QLineEdit()
-        self.tags.setPlaceholderText("Minecraft, League of Legends")
         save = QPushButton("Save settings")
         save.clicked.connect(self.save_settings)
 
+        form.addRow(label("YOUR ROUTINE", name="h2"))
         form.addRow("Working style", self.style_box)
         form.addRow("Work hours per day", self.daily_hours)
+        form.addRow("Notifications", self.notify_box)
         form.addRow("Gaming session limit", self.max_minutes)
-        form.addRow("Extra apps to treat as games", self.tags)
-        form.addRow("", label("Steam and Epic games are detected automatically.", muted=True))
         form.addRow("", save)
+
+        form.addRow(QLabel(""))
+        form.addRow(label("GAMES", name="h2"))
+        self.game_list = GameList(self._add_game, self._remove_game)
+        form.addRow("Extra apps to treat as games", self.game_list)
+        form.addRow("", label("Steam and Epic games are detected automatically.", muted=True))
         self._settings_form = form
 
         # --- AI estimates: backend choice + Claude account status -----------
@@ -813,7 +965,7 @@ class MainWindow(QMainWindow):
         form.addRow("", self.claude_status)
 
         # One consistent size for every field and button on the page.
-        for w in (self.style_box, self.daily_hours, self.max_minutes, self.tags, save,
+        for w in (self.style_box, self.daily_hours, self.notify_box, self.max_minutes, save,
                   self.backend_box, self.claude_btn):
             w.setFixedSize(320, 36)
         for spin in (self.daily_hours, self.max_minutes):
@@ -823,6 +975,8 @@ class MainWindow(QMainWindow):
             item = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
             if item and isinstance(item.widget(), QLabel) and item.widget().text():
                 item.widget().setMinimumHeight(36)
+                item.widget().setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+                item.widget().setContentsMargins(0, 8, 0, 0)  # first line level with the field text
 
         self._claude_checking = False
         self._login_polls = 0
@@ -1002,20 +1156,78 @@ class MainWindow(QMainWindow):
         self.style_box.setCurrentIndex(self.style_box.findData(ws.style))
         self.daily_hours.setValue(ws.daily_work_hours)
         self.max_minutes.setValue(ws.max_gaming_minutes)
-        self.tags.setText(", ".join(state.tagged_games))
+        self.notify_box.blockSignals(True)
+        self.notify_box.setCurrentIndex(self.notify_box.findData(ws.notify_level))
+        self.notify_box.blockSignals(False)
+        self._notify_level = ws.notify_level
+        self.max_minutes.setEnabled(ws.notify_level != NotifyLevel.OFF)
+        self.game_list.set_games(state.tagged_games)
         self.backend_box.blockSignals(True)
         self.backend_box.setCurrentIndex(max(0, self.backend_box.findData(self.ctx.backend_name())))
         self.backend_box.blockSignals(False)
 
     def save_settings(self) -> None:
         style = WorkingStyle(
-            style=self.style_box.currentData(),
+            style=Style(self.style_box.currentData()),
             daily_work_hours=self.daily_hours.value(),
             max_gaming_minutes=self.max_minutes.value(),
         )
-        self.ctx.save_settings(style, self.tags.text().split(","))
+        self.ctx.save_settings(style)
         self.toast("Settings saved", "ok")
         self.refresh(force=True)
+
+    # Notifications and games
+
+    def _notify_changed(self) -> None:
+        level = NotifyLevel(self.notify_box.currentData())  # Qt returns the enum as a str
+        if level == NotifyLevel.INTERRUPT and self._notify_level != NotifyLevel.INTERRUPT:
+            ConfirmModal(
+                self.centralWidget(),
+                "Turn on interrupting notifications?",
+                "When a gaming session runs past your limit, Gameline will bring its window to the "
+                "front, even over a fullscreen game. Launch reminders stay as normal notifications.",
+                "This can interrupt online games or intense moments.",
+                "Turn on",
+                lambda: self._apply_notify(NotifyLevel.INTERRUPT),
+                on_cancel=self._revert_notify,
+            )
+            return
+        self._apply_notify(level)
+
+    def _revert_notify(self) -> None:
+        self.notify_box.blockSignals(True)
+        self.notify_box.setCurrentIndex(self.notify_box.findData(self._notify_level))
+        self.notify_box.blockSignals(False)
+
+    def _apply_notify(self, level: NotifyLevel) -> None:
+        self._notify_level = level
+        self.ctx.set_notify_level(level)
+        self.max_minutes.setEnabled(level != NotifyLevel.OFF)
+        self.toast(f"Notifications: {NOTIFY_LABELS[level]}", "ok")
+
+    def _add_game(self, name: str) -> bool:
+        if not name.strip():
+            return False
+        if not self.ctx.add_tagged_game(name):
+            self.toast(f"{name.strip()} is already on the list")
+            return False
+        self.game_list.set_games(self.ctx.store.load().tagged_games)
+        self.toast(f"{name.strip()} will be treated as a game", "ok")
+        return True
+
+    def _remove_game(self, name: str) -> None:
+        self.ctx.remove_tagged_game(name)
+        self.game_list.set_games(self.ctx.store.load().tagged_games)
+        self.toast(f"Removed {name}")
+
+    def interrupt(self, title: str, body: str) -> None:
+        """Interrupting level: bring Gameline to the front and show the alert in a modal."""
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        bring_app_to_front()
+        self.sidebar.select(0)
+        AlertModal(self.centralWidget(), title, body, "Taking a break")
 
     # Claude account
 

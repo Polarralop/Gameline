@@ -12,7 +12,7 @@ from .demo.fake_game import FAKE_GAME_NAME, build
 from .detectors import GameDetector, default_detectors
 from .estimator import estimate
 from .llm import default_backend, get_llm
-from .models import Chunk, Deadline, Estimate, Style, WorkingStyle
+from .models import Chunk, Deadline, Estimate, NotifyLevel, Style, WorkingStyle
 from .planner import at_risk_deadlines
 from .store import State, Store
 
@@ -118,10 +118,30 @@ class AppContext:
             d.estimate.chunks[index].done = done
             self.store.save(state)
 
-    def save_settings(self, style: WorkingStyle, tagged_games: list[str]) -> None:
+    def save_settings(self, style: WorkingStyle) -> None:
         state = self.store.load()
+        style.notify_level = state.working_style.notify_level  # saved on its own, below
         state.working_style = style
-        state.tagged_games = [t.strip() for t in tagged_games if t.strip()]
+        self.store.save(state)
+
+    def set_notify_level(self, level: NotifyLevel) -> None:
+        state = self.store.load()
+        state.working_style.notify_level = level
+        self.store.save(state)
+
+    def add_tagged_game(self, name: str) -> bool:
+        """Returns False if empty or already in the list (case-insensitive)."""
+        name = name.strip()
+        state = self.store.load()
+        if not name or name.lower() in {g.lower() for g in state.tagged_games}:
+            return False
+        state.tagged_games.append(name)
+        self.store.save(state)
+        return True
+
+    def remove_tagged_game(self, name: str) -> None:
+        state = self.store.load()
+        state.tagged_games = [g for g in state.tagged_games if g != name]
         self.store.save(state)
 
     def status_line(self) -> str:

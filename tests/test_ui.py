@@ -258,3 +258,7 @@ def test_group_by_subject_adds_headers(qapp, tmp_path):
     headers = [w.cards.itemAt(i).widget().text() for i in range(w.cards.count())
                if isinstance(w.cards.itemAt(i).widget(), QtWidgets.QLabel)]
     assert headers == ["CSCA48", "WSTC02"]
+    first = dict(w._headers)
+    w.show_done.setChecked(True)
+    w.show_done.setChecked(False)
+    assert w._headers == first and all(h.isVisibleTo(w) for h in first.values())  # reused, not rebuilt

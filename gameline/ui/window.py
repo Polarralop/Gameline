@@ -1471,13 +1471,16 @@ class MainWindow(QMainWindow):
         state = state or self.ctx.store.load()
         self.cards_host.setUpdatesEnabled(False)
         try:
-            # Take everything out; cards are kept, headers and notes are thrown away.
-            cards = set(self.card_widgets.values())
+            # Take everything out of the layout. Cards, subject headers and the
+            # empty-state note are all kept and reused, so nothing gets recreated.
+            if not hasattr(self, "_headers"):
+                self._headers: dict[str, QLabel] = {}
+                self._empty_note = label("", muted=True)
             while self.cards.count():
-                w_ = self.cards.takeAt(0).widget()
-                if w_ is not None and w_ not in cards:
-                    w_.hide()
-                    w_.deleteLater()
+                self.cards.takeAt(0)
+            for header in self._headers.values():
+                header.hide()
+            self._empty_note.hide()
 
             hidden = 0 if state.show_completed else sum(d.completed for d in state.deadlines)
             shown = [d for d in state.deadlines if (state.show_completed or not d.completed) and d.id in self.card_widgets]
@@ -1490,7 +1493,9 @@ class MainWindow(QMainWindow):
                 text = "No deadlines yet. Add one, or load the sample week from the Demo tab."
                 if hidden:
                     text = f"All caught up. {hidden} completed deadline{'s are' if hidden != 1 else ' is'} hidden."
-                self.cards.addWidget(label(text, muted=True))
+                self._empty_note.setText(text)
+                self.cards.addWidget(self._empty_note)
+                self._empty_note.show()
 
             if state.view_sort == "subject":
                 groups: dict[str, list[Deadline]] = {}
@@ -1499,9 +1504,12 @@ class MainWindow(QMainWindow):
                 # Subjects ordered by their soonest open deadline; "Other" last.
                 order = sorted(groups, key=lambda k: (k == "Other", min((g.completed, g.due) for g in groups[k])))
                 for i, subject in enumerate(order):
-                    header = label(subject.upper(), name="h2")
+                    header = self._headers.get(subject)
+                    if header is None:
+                        header = self._headers[subject] = label(subject.upper(), name="h2")
                     header.setContentsMargins(2, 8 if i else 0, 0, 0)
                     self.cards.addWidget(header)
+                    header.show()
                     for d in groups[subject]:
                         self.cards.addWidget(self.card_widgets[d.id])
             else:

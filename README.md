@@ -16,6 +16,19 @@ Pick how estimates are made in Preferences → AI estimates (or set `GAMELINE_LL
 - `claude-cli`: your Claude subscription through the local Claude Code CLI; log in from Preferences. Personal use only.
 - `stub`: offline rough guesses
 
+## Gameline.app
+
+```bash
+./build_app.sh --alias   # quick: the .app runs this source folder; restart it to pick up code changes
+./build_app.sh           # standalone build for the demo (about a minute, ~300 MB)
+open dist/Gameline.app
+```
+
+Both builds and `./run.sh` share one data folder, `~/Library/Application Support/Gameline`
+(`state.json`, `.env`, the demo game). Run only one of them at a time, or you'll get every
+notification twice. The first time the app sends a notification, macOS asks to allow
+"Gameline"; for Gaming Focus, add Gameline under Allowed Apps.
+
 ## Demo flow
 
 1. Demo tab → **Load sample week** (one deadline at risk, one on track).

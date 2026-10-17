@@ -1,0 +1,21 @@
+#!/bin/sh
+# Build Gameline.app into dist/.
+#   ./build_app.sh          full, standalone build (for the demo)
+#   ./build_app.sh --alias  alias build that runs this source folder (for day-to-day use)
+set -e
+cd "$(dirname "$0")"
+[ -d .venv ] || { python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt; }
+.venv/bin/pip install -q py2app
+# Move any old repo-local data into ~/Library/Application Support/Gameline first,
+# so the app sees the same deadlines as ./run.sh.
+.venv/bin/python -c "from gameline.paths import migrate_legacy_data as m; [print('Moved', p) for p in m()]"
+[ -f packaging/Gameline.icns ] || .venv/bin/python packaging/make_icns.py
+rm -rf build dist
+if [ "$1" = "--alias" ]; then
+  .venv/bin/python setup.py -q py2app -A
+else
+  .venv/bin/python setup.py -q py2app
+  .venv/bin/python packaging/prune_qt.py dist/Gameline.app
+  codesign --force --deep --sign - dist/Gameline.app  # re-sign after trimming (ad-hoc)
+fi
+echo "Built dist/Gameline.app. Open it with: open dist/Gameline.app"

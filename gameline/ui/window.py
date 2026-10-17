@@ -65,6 +65,7 @@ from ..llm import BACKENDS
 from ..llm.claude_cli import AccountStatus, account_status, open_login_terminal
 from ..llm.claude_cli import logout as claude_logout
 from ..models import Deadline, NotifyLevel, Style, WorkingStyle, subject_of
+from ..paths import icons_dir
 from ..planner import DeadlineStatus, assess
 from .theme import colors, dropdown_list_qss, icon_path
 
@@ -1005,7 +1006,7 @@ class GameList(QWidget):
 
 # --- sidebar -----------------------------------------------------------------
 
-ICONS_DIR = Path(__file__).resolve().parents[2] / "assets" / "icons"
+ICONS_DIR = icons_dir()  # repo assets/icons, or Gameline.app's Resources when packaged
 
 
 def nav_icon(name: str) -> QIcon:

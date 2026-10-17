@@ -16,7 +16,6 @@ from pathlib import Path
 
 from .models import Deadline, WorkingStyle
 
-DEFAULT_PATH = Path(__file__).resolve().parents[1] / "data" / "state.json"
 
 
 @dataclass
@@ -81,7 +80,12 @@ class State:
 
 
 class Store:
-    def __init__(self, path: Path = DEFAULT_PATH) -> None:
+    def __init__(self, path: Path | None = None) -> None:
+        # Default: the per-user data folder (see paths.py), shared by ./run.sh and Gameline.app.
+        if path is None:
+            from .paths import state_path
+
+            path = state_path()
         self.path = Path(path)
         self.lock = threading.RLock()
 

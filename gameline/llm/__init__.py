@@ -13,7 +13,11 @@ from dotenv import load_dotenv
 
 from .base import EstimatorLLM
 
-load_dotenv()
+# .env from the repo (development) and the data folder (also used by Gameline.app).
+from ..paths import REPO_ROOT, data_dir  # noqa: E402
+
+load_dotenv(REPO_ROOT / ".env")
+load_dotenv(data_dir() / ".env")
 
 
 BACKENDS = {"claude": "Claude API key", "claude-cli": "Claude subscription", "stub": "Offline (rough guesses)"}

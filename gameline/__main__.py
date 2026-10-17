@@ -22,6 +22,10 @@ def detect_loop() -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
+    from .paths import migrate_legacy_data
+
+    for path in migrate_legacy_data():
+        logging.info("Moved existing data to %s", path)
     if "--detect" in sys.argv:
         detect_loop()
     else:

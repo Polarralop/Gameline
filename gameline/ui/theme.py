@@ -6,8 +6,11 @@ CSS id (#card) and dynamic properties like attribute selectors ([tone="risk"]).
 
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QColor, QGuiApplication, QPalette
 
 LIGHT = dict(side="#ecebe6", hover="#e2e0da", bg="#f6f5f2", card="#ffffff", ink="#1d1d1f", muted="#6b6b70", line="#e3e1dc",
              ok="#2f7d4f", ok_bg="#dcefe3", risk="#c2410c", risk_bg="#fbe3d6", accent="#3b5bdb")
@@ -20,8 +23,38 @@ def colors() -> dict[str, str]:
     return DARK if dark else LIGHT
 
 
+def _chevron(color: str) -> str:
+    """Write a small chevron SVG in the theme color; stylesheets need a file path."""
+    path = Path(tempfile.gettempdir()) / f"gameline-chevron-{color.lstrip('#')}.svg"
+    if not path.exists():
+        path.write_text(
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12">'
+            f'<path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="{color}" stroke-width="1.6" '
+            f'stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        )
+    return path.as_posix()
+
+
+def palette() -> QPalette:
+    """Fusion draws popups (calendar, combo lists) from the palette, so match the theme."""
+    c = colors()
+    pal = QPalette()
+    for role, key in (
+        (QPalette.ColorRole.Window, "bg"), (QPalette.ColorRole.Base, "card"),
+        (QPalette.ColorRole.AlternateBase, "bg"), (QPalette.ColorRole.Button, "card"),
+        (QPalette.ColorRole.Text, "ink"), (QPalette.ColorRole.WindowText, "ink"),
+        (QPalette.ColorRole.ButtonText, "ink"), (QPalette.ColorRole.Highlight, "accent"),
+        (QPalette.ColorRole.PlaceholderText, "muted"), (QPalette.ColorRole.ToolTipBase, "card"),
+        (QPalette.ColorRole.ToolTipText, "ink"),
+    ):
+        pal.setColor(role, QColor(c[key]))
+    pal.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    return pal
+
+
 def stylesheet() -> str:
     c = colors()
+    chevron = _chevron(c["muted"])
     return f"""
     QWidget {{ color: {c['ink']}; font-size: 14px; }}
     QMainWindow, QDialog, QScrollArea, #page {{ background: {c['bg']}; }}
@@ -39,7 +72,18 @@ def stylesheet() -> str:
     QPushButton:disabled {{ background: {c['line']}; color: {c['muted']}; }}
     QPushButton[ghost="true"] {{ background: transparent; color: {c['muted']}; border: 1px solid {c['line']}; padding: 4px 10px; font-weight: 500; }}
     QLineEdit, QPlainTextEdit, QDateTimeEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
-        background: {c['card']}; border: 1px solid {c['line']}; border-radius: 8px; padding: 5px 8px; }}
+        background: {c['card']}; border: 1px solid {c['line']}; border-radius: 8px;
+        padding: 6px 10px; min-height: 22px; selection-background-color: {c['accent']}; }}
+    QLineEdit:focus, QPlainTextEdit:focus, QDateTimeEdit:focus, QSpinBox:focus,
+    QDoubleSpinBox:focus, QComboBox:focus {{ border: 1px solid {c['accent']}; }}
+    QSpinBox, QDoubleSpinBox {{ padding: 0px; }}
+    QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+        subcontrol-origin: border; width: 0px; height: 0px; border: 0; }}  /* type or scroll to change */
+    QComboBox::drop-down, QDateTimeEdit::drop-down {{
+        subcontrol-origin: padding; subcontrol-position: center right; width: 28px; border: 0; }}
+    QComboBox::down-arrow, QDateTimeEdit::down-arrow {{ image: url({chevron}); width: 12px; height: 12px; }}
+    QComboBox QAbstractItemView {{ background: {c['card']}; border: 1px solid {c['line']};
+        selection-background-color: {c['accent']}; selection-color: white; padding: 4px; outline: 0; }}
     QFrame#modal {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 14px; }}
     QPushButton#claudeAccount[tone="ok"] {{ background: {c['ok_bg']}; color: {c['ok']}; }}
     QPushButton#claudeAccount[tone="idle"] {{ background: {c['line']}; color: {c['muted']}; }}

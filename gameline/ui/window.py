@@ -507,6 +507,9 @@ class MainWindow(QMainWindow):
         tab = QWidget()
         form = QFormLayout(tab)
         form.setContentsMargins(0, 16, 0, 0)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        form.setHorizontalSpacing(24)
+        form.setVerticalSpacing(12)
         self.style_box = QComboBox()
         for st, text in STYLE_LABELS.items():
             self.style_box.addItem(text, st)
@@ -529,6 +532,7 @@ class MainWindow(QMainWindow):
         form.addRow("Extra apps to treat as games", self.tags)
         form.addRow("", label("Steam and Epic games are detected automatically.", muted=True))
         form.addRow("", save)
+        self._settings_form = form
 
         # --- AI estimates: backend choice + Claude account status -----------
         form.addRow(QLabel(""))
@@ -542,15 +546,22 @@ class MainWindow(QMainWindow):
         self.claude_btn = QPushButton("Checking Claude…")
         self.claude_btn.setObjectName("claudeAccount")
         self.claude_btn.clicked.connect(self.claude_account_clicked)
-        self.claude_status = label("", muted=True, wrap=True)
-        account = QVBoxLayout()
-        account.setSpacing(4)
-        account.addWidget(self.claude_btn, 0, Qt.AlignmentFlag.AlignLeft)
-        account.addWidget(self.claude_status)
-        form.addRow("Claude account", account)
-        form.addRow("", label(
-            "The Claude subscription option runs Claude Code on this Mac. It's for your own use only; "
-            "a version shared with others needs an API key.", muted=True, wrap=True))
+        self.claude_btn.setMinimumHeight(36)
+        self.claude_status = label("", muted=True)  # one line, so nothing gets clipped
+        form.addRow("Claude account", self.claude_btn)
+        form.addRow("", self.claude_status)
+
+        # One consistent size for every field and button on the page.
+        for w in (self.style_box, self.daily_hours, self.max_minutes, self.tags, save,
+                  self.backend_box, self.claude_btn):
+            w.setFixedSize(320, 36)
+        for spin in (self.daily_hours, self.max_minutes):
+            spin.lineEdit().setTextMargins(10, 0, 10, 0)  # spin boxes ignore stylesheet padding
+        # Labels as tall as the fields, so they line up with the field text.
+        for row in range(form.rowCount()):
+            item = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
+            if item and isinstance(item.widget(), QLabel) and item.widget().text():
+                item.widget().setMinimumHeight(36)
 
         self._claude_checking = False
         self._login_polls = 0
@@ -734,7 +745,9 @@ class MainWindow(QMainWindow):
         if status is None:
             self.claude_status.setText("")
         elif status.ok:
-            self.claude_status.setText(status.label + ". Click to log out.")
+            who = status.email + (f" · {status.plan.title()}" if status.plan else "")
+            self.claude_status.setText(who)
+            btn.setToolTip("Click to log out")
         else:
             show = status.message and status.installed and "expired" not in status.label.lower()
             detail = f" ({status.message})" if show else ""

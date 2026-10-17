@@ -17,7 +17,7 @@ from ..context import AppContext
 from ..notify import notify
 from ..reminders import Reminders
 from ..watcher import Watcher
-from .theme import stylesheet
+from .theme import palette, stylesheet
 from .window import MainWindow
 
 
@@ -115,6 +115,9 @@ def run() -> None:
     qapp = QApplication(sys.argv)
     qapp.setApplicationName("Gameline")
     qapp.setQuitOnLastWindowClosed(False)  # live on in the menu bar
+    # Fusion renders stylesheets the same on every OS, unlike the native Mac style.
+    qapp.setStyle("Fusion")
+    qapp.setPalette(palette())
     qapp.setStyleSheet(stylesheet())
     app = GamelineApp(qapp)  # noqa: F841 (must stay alive for the event loop)
     sys.exit(qapp.exec())

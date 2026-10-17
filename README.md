@@ -21,8 +21,8 @@ Pick how estimates are made in Preferences → AI estimates (or set `GAMELINE_LL
 
 ```bash
 ./build_app.sh --alias   # quick: the .app runs this source folder; restart it to pick up code changes
-./build_app.sh           # standalone build for the demo (about a minute, ~300 MB)
-open dist/Gameline.app
+./build_app.sh           # standalone build, installed to /Applications (about a minute, ~300 MB)
+open -a Gameline
 ```
 
 Both builds and `./run.sh` share one data folder, `~/Library/Application Support/Gameline`

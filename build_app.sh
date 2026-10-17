@@ -26,7 +26,21 @@ else
   cp -R .venv/lib/python3*/site-packages/google dist/Gameline.app/Contents/Resources/lib/python3*/
   codesign --force --deep --sign - dist/Gameline.app  # re-sign after trimming (ad-hoc)
 fi
-# Make Finder and the Dock pick up a changed icon instead of a cached one.
-touch dist/Gameline.app
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f dist/Gameline.app || true
-echo "Built dist/Gameline.app. Open it with: open dist/Gameline.app"
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+if [ "$1" = "--alias" ]; then
+  # Alias builds run this source folder, so they stay in dist/.
+  touch dist/Gameline.app
+  "$LSREGISTER" -f dist/Gameline.app || true
+  echo "Built dist/Gameline.app (alias). Open it with: open dist/Gameline.app"
+else
+  # Install outside ~/Documents: macOS asks for Documents access whenever an
+  # app stored there reads its own files.
+  osascript -e 'quit app "Gameline"' >/dev/null 2>&1 || true
+  pkill -f "Gameline.app/Contents/MacOS/Gameline" >/dev/null 2>&1 || true
+  rm -rf /Applications/Gameline.app
+  ditto dist/Gameline.app /Applications/Gameline.app
+  rm -rf dist/Gameline.app  # one copy, so Spotlight and the Dock don't find two
+  touch /Applications/Gameline.app
+  "$LSREGISTER" -f /Applications/Gameline.app || true
+  echo "Installed /Applications/Gameline.app. Open it with: open -a Gameline"
+fi

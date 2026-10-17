@@ -979,6 +979,18 @@ def nav_icon(name: str) -> QIcon:
     return icon
 
 
+def menu_icon() -> QIcon:
+    """Hamburger icon in the same 24px grid and stroke as the assets/icons set."""
+    c = colors()
+    path = Path(tempfile.gettempdir()) / f"gameline-menu-{c['muted'].lstrip('#')}.svg"
+    path.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" '
+        f'stroke="{c["muted"]}" stroke-width="1.7" stroke-linecap="round">'
+        '<path d="M4 7h16M4 12h16M4 17h16"/></svg>'
+    )
+    return QIcon(path.as_posix())
+
+
 class Sidebar(QFrame):
     """Navigation rail that collapses to icons only. Width changes are animated."""
 
@@ -1001,8 +1013,12 @@ class Sidebar(QFrame):
         # brand into the toggle. Here both stay put and the sidebar edge clips.
         top = QWidget()
         top.setFixedSize(self.EXPANDED - 20, 34)
-        self.toggle_btn = QPushButton("☰", top)
+        self.toggle_btn = QPushButton(top)
         self.toggle_btn.setObjectName("navToggle")
+        # Drawn as an icon with the same size and left padding as the nav icons
+        # below it, so all of them line up on one vertical axis.
+        self.toggle_btn.setIcon(menu_icon())
+        self.toggle_btn.setIconSize(QSize(18, 18))
         self.toggle_btn.setToolTip("Collapse sidebar")
         self.toggle_btn.clicked.connect(self.toggle)
         self.toggle_btn.setGeometry(0, 0, self.COLLAPSED - 20, 34)

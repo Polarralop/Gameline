@@ -133,7 +133,7 @@ def stylesheet() -> str:
     QLabel#modalTitle {{ font-size: 18px; font-weight: 700; }}
     QFrame#sidebar {{ background: {c['side']}; border-right: 1px solid {c['line']}; }}
     QLabel#brand {{ font-size: 16px; font-weight: 700; padding-left: 4px; }}
-    QPushButton#navToggle {{ background: transparent; color: {c['muted']}; font-size: 18px; padding: 0; }}
+    QPushButton#navToggle {{ background: transparent; text-align: left; padding: 0 0 0 12px; border-radius: 8px; }}
     QPushButton#navToggle:hover {{ background: {c['hover']}; }}
     QPushButton#navItem {{ background: transparent; color: {c['muted']}; text-align: left;
                            padding: 9px 0 9px 12px; border-radius: 8px; font-weight: 500; }}

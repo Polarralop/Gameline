@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from .clock import Clock
 from .demo.fake_game import FAKE_GAME_NAME, build
 from .detectors import GameDetector, default_detectors
-from .estimator import estimate_pending
+from .estimator import estimate
 from .llm import default_backend, get_llm
 from .models import Chunk, Deadline, Estimate, Style, WorkingStyle
 from .planner import at_risk_deadlines
@@ -54,32 +54,57 @@ class AppContext:
         state.llm_backend = name
         self.store.save(state)
 
-    def save_and_estimate(self, state: State) -> list[str]:
-        """Persist, then estimate any new or edited deadlines. Returns error messages."""
-        errors = []
+    def estimate_deadline(self, did: str) -> list[str]:
+        """Estimate one deadline if it's new or edited. Returns error messages.
+
+        The LLM call is slow, so it runs on a snapshot and the result is merged
+        into freshly loaded state, so edits made meanwhile aren't overwritten.
+        """
+        d = self.store.load().get(did)
+        if d is None or not d.needs_estimate:
+            return []
+        fingerprint = d.fingerprint()
+        state = self.store.load()
         try:
-            estimate_pending(state, self.llm, self.clock.now())
+            est = estimate(d, state.working_style, self.llm, self.clock.now())
         except Exception as exc:
             log.exception("Estimation failed")
             hint = " Log in to Claude in Preferences." if getattr(exc, "auth", False) else ""
-            errors.append(f"Estimate failed: {exc}.{hint} It will retry on the next save.")
-        self.store.save(state)
-        return errors
+            return [f"Couldn't estimate “{d.title}”: {exc}.{hint}"]
+        with self.store.lock:
+            state = self.store.load()
+            current = state.get(did)
+            if current and current.fingerprint() == fingerprint:  # still the same deadline
+                current.estimate, current.estimated_from = est, fingerprint
+                self.store.save(state)
+        return []
 
     # --- user actions (the UI calls these; they are plain code so tests can too) ---
 
-    def add_deadline(self, title: str, due: datetime, notes: str = "") -> list[str]:
+    def create_deadline(self, title: str, due: datetime, notes: str = "") -> str:
+        """Save a deadline straight away (no estimate yet). Returns its id."""
+        d = Deadline(title=title.strip(), due=due, notes=notes.strip())
         state = self.store.load()
-        state.deadlines.append(Deadline(title=title.strip(), due=due, notes=notes.strip()))
-        return self.save_and_estimate(state)
+        state.deadlines.append(d)
+        self.store.save(state)
+        return d.id
 
-    def edit_deadline(self, did: str, title: str, due: datetime, notes: str) -> list[str]:
+    def update_deadline(self, did: str, title: str, due: datetime, notes: str) -> bool:
+        """Save edits straight away. Returns True if the deadline needs re-estimating."""
         state = self.store.load()
         d = state.get(did)
         if not d:
-            return []
+            return False
         d.title, d.due, d.notes = title.strip(), due, notes.strip()
-        return self.save_and_estimate(state)
+        self.store.save(state)
+        return d.needs_estimate
+
+    def add_deadline(self, title: str, due: datetime, notes: str = "") -> list[str]:
+        return self.estimate_deadline(self.create_deadline(title, due, notes))
+
+    def edit_deadline(self, did: str, title: str, due: datetime, notes: str) -> list[str]:
+        self.update_deadline(did, title, due, notes)
+        return self.estimate_deadline(did)
 
     def delete_deadline(self, did: str) -> None:
         state = self.store.load()

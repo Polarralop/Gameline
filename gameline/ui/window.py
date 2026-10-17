@@ -25,7 +25,7 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QColor, QKeySequence, QPainter, QShortcut
+from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -38,7 +38,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
-    QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -55,6 +54,7 @@ from ..llm.claude_cli import AccountStatus, account_status, open_login_terminal
 from ..llm.claude_cli import logout as claude_logout
 from ..models import Deadline, Style, WorkingStyle
 from ..planner import DeadlineStatus, assess
+from .theme import colors
 
 STYLE_LABELS = {Style.SHORT_BURSTS: "Short bursts", Style.MIXED: "Mixed", Style.LONG_SESSIONS: "Long sessions"}
 
@@ -98,6 +98,8 @@ class Job(QRunnable):
     """Run fn() on the thread pool and emit its result on the GUI thread."""
 
     def __init__(self, fn: Callable[[], object], on_done: Callable[[object], None]) -> None:
+        # on_done should be a bound method of a QObject (a widget), so the
+        # signal is queued onto the GUI thread rather than called from the pool.
         super().__init__()
         self.fn = fn
         self.signals = _JobSignals()
@@ -260,6 +262,107 @@ class ConfirmModal(Modal):
         self.on_confirm()
 
 
+# --- spinner and toasts --------------------------------------------------------
+
+
+class Spinner(QWidget):
+    """Small rotating arc, shown while the AI is estimating."""
+
+    def __init__(self, size: int = 16) -> None:
+        super().__init__()
+        self.setFixedSize(size, size)
+        self.angle = 0
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._tick)
+        self.timer.start(16)
+
+    def _tick(self) -> None:
+        self.angle = (self.angle + 8) % 360
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor(colors()["accent"]), 2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen)
+        r = self.rect().adjusted(2, 2, -2, -2)
+        p.drawArc(r, -self.angle * 16, 270 * 16)
+
+
+class Toast(QFrame):
+    def __init__(self, host: QWidget, text: str, tone: str) -> None:
+        super().__init__(host)
+        self.setObjectName("toast")
+        self.setProperty("tone", tone)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(14, 10, 14, 10)
+        msg = QLabel(text)
+        msg.setWordWrap(True)
+        lay.addWidget(msg)
+        # Wrapped labels need their height worked out from the width up front,
+        # after the stylesheet font is applied.
+        self.ensurePolished()
+        msg.ensurePolished()
+        self.setFixedSize(320, msg.heightForWidth(320 - 31) + 22)
+        self.fx = QGraphicsOpacityEffect(self)
+        self.fx.setOpacity(0.0)
+        self.setGraphicsEffect(self.fx)
+        self.anim = QPropertyAnimation(self.fx, b"opacity", self)
+        self.anim.setDuration(180)
+
+
+class Toaster(QObject):
+    """Stacks small auto-dismissing notices in the top-right of the window."""
+
+    MARGIN, TOP, GAP = 16, 64, 8  # TOP sits just under the page header and status pill
+
+    def __init__(self, host: QWidget) -> None:
+        super().__init__(host)
+        self.host = host
+        self.toasts: list[Toast] = []
+        host.installEventFilter(self)
+
+    def show(self, text: str, tone: str = "info", ms: int = 3000) -> Toast:
+        toast = Toast(self.host, text, tone)
+        self.toasts.append(toast)
+        self._layout()
+        toast.show()
+        toast.raise_()
+        toast.anim.setStartValue(0.0)
+        toast.anim.setEndValue(1.0)
+        toast.anim.start()
+        QTimer.singleShot(ms, lambda: self._dismiss(toast))
+        return toast
+
+    def _dismiss(self, toast: Toast) -> None:
+        if toast not in self.toasts:
+            return
+        toast.anim.stop()
+        toast.anim.setStartValue(toast.fx.opacity())
+        toast.anim.setEndValue(0.0)
+        toast.anim.finished.connect(lambda: self._remove(toast))
+        toast.anim.start()
+
+    def _remove(self, toast: Toast) -> None:
+        if toast in self.toasts:
+            self.toasts.remove(toast)
+            toast.deleteLater()
+            self._layout()
+
+    def _layout(self) -> None:
+        y = self.TOP
+        for t in self.toasts:
+            t.move(self.host.width() - t.width() - self.MARGIN, y)
+            t.raise_()
+            y += t.height() + self.GAP
+
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() == QEvent.Type.Resize:
+            self._layout()
+        return False
+
+
 # --- deadline card -----------------------------------------------------------
 
 
@@ -281,11 +384,43 @@ class DeadlineCard(QFrame):
             meta += f" · importance {d.estimate.importance}/5"
         left.addWidget(label(meta, muted=True))
         top.addLayout(left, 1)
-        if not d.estimate:
-            top.addWidget(pill("Estimating…" if window.busy else "Not estimated", "ok"), 0, Qt.AlignmentFlag.AlignTop)
+        pending = d.id in window.pending
+        estimated = d.estimate is not None and not d.needs_estimate
+        if pending:
+            thinking = QHBoxLayout()
+            thinking.setSpacing(6)
+            thinking.addWidget(Spinner())
+            thinking.addWidget(label("Estimating…", muted=True))
+            top.addLayout(thinking)
+        elif not estimated:
+            top.addWidget(pill("Not estimated", "idle"), 0, Qt.AlignmentFlag.AlignTop)
         else:
             top.addWidget(pill("At risk" if s.at_risk else "On track", "risk" if s.at_risk else "ok"), 0, Qt.AlignmentFlag.AlignTop)
         lay.addLayout(top)
+
+        if not estimated:
+            # Placeholder bar until the estimate lands; the whole card is greyed out.
+            bar = QProgressBar()
+            bar.setTextVisible(False)
+            bar.setValue(0)
+            lay.addWidget(bar)
+            if pending:
+                fx = QGraphicsOpacityEffect(self)
+                fx.setOpacity(0.55)
+                self.setGraphicsEffect(fx)
+                return
+            retry = QHBoxLayout()
+            retry.addWidget(label("The estimate didn't come back.", muted=True))
+            retry.addStretch(1)
+            for text, fn in (("Retry", lambda: window.start_estimate(d.id)),
+                             ("Edit", lambda: window.edit_deadline(d)),
+                             ("Delete", lambda: window.delete_deadline(d))):
+                b = QPushButton(text)
+                b.setProperty("ghost", True)
+                b.clicked.connect(fn)
+                retry.addWidget(b)
+            lay.addLayout(retry)
+            return
 
         if d.estimate:
             bar = QProgressBar()
@@ -424,7 +559,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ctx = ctx
         self.sessions = sessions  # names of games currently being played
-        self.busy = False
+        self.pending: set[str] = set()  # deadline ids being estimated right now
         self._signature = None
         self.pool = QThreadPool.globalInstance()
         self.account_checker = account_status  # swapped out in tests
@@ -465,6 +600,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self.stack, 1)
         outer.addWidget(content, 1)
         self.setCentralWidget(page)
+        self.toaster = Toaster(page)
         self.sidebar.select(0)
 
         self.timer = QTimer(self)
@@ -608,12 +744,11 @@ class MainWindow(QMainWindow):
         self.clock_label.setText(clock_text)
         self.speed_btn.setText("Back to real time" if self.ctx.demo_mode else "Speed up time (6 min/s)")
         self.game_btn.setText("Quit fake game" if self.ctx.fake_game_running else "Launch fake game")
-        self.add_btn.setEnabled(not self.busy)
 
         # Rebuild cards only when something visible changed.
         path = self.ctx.store.path
         mtime = path.stat().st_mtime if path.exists() else 0
-        sig = (mtime, now.strftime("%Y%m%d%H%M"), self.busy)
+        sig = (mtime, now.strftime("%Y%m%d%H%M"), frozenset(self.pending))
         if force or sig != self._signature:
             self._signature = sig
             self._rebuild_cards(now)
@@ -628,6 +763,7 @@ class MainWindow(QMainWindow):
         while self.cards.count():
             item = self.cards.takeAt(0)
             if item.widget():
+                item.widget().hide()  # hide now; deleteLater only runs on the next event loop pass
                 item.widget().deleteLater()
         state = self.ctx.store.load()
         deadlines = sorted(state.deadlines, key=lambda d: d.due)
@@ -639,26 +775,48 @@ class MainWindow(QMainWindow):
 
     # actions
 
-    def _run_estimate(self, fn: Callable[[], list[str]]) -> None:
-        self.busy = True
-        self.refresh(force=True)
-        self.pool.start(Job(fn, self._estimate_done))
+    def toast(self, text: str, tone: str = "info", ms: int = 3000) -> None:
+        self.toaster.show(text, tone, ms)
 
-    def _estimate_done(self, errors) -> None:
-        self.busy = False
+    def start_estimate(self, did: str) -> None:
+        """Estimate in the background; the card shows a spinner until it lands."""
+        if did in self.pending:
+            return
+        self.pending.add(did)
+        self.refresh(force=True)
+        # on_done must be a bound method of a QObject: Qt then delivers it on the
+        # GUI thread. A lambda would run on the worker thread instead.
+        self.pool.start(Job(lambda: (did, self.ctx.estimate_deadline(did)), self._estimate_done))
+
+    def _estimate_done(self, result) -> None:
+        if isinstance(result, list):  # the job itself crashed; Job returns the error text
+            self.toast("\n".join(result), "error", ms=7000)
+            self.pending.clear()
+            self.refresh(force=True)
+            return
+        did, errors = result
+        self.pending.discard(did)
         self.refresh(force=True)
         if errors:
-            QMessageBox.warning(self, "Gameline", "\n".join(errors))
+            self.toast("\n".join(errors), "error", ms=7000)
+        else:
+            d = self.ctx.store.load().get(did)
+            if d and d.estimate:
+                self.toast(f"Estimated “{d.title}”: {d.estimate.effort_hours:g}h of work", "ok")
 
     def add_deadline(self) -> DeadlineModal:
         def save(title: str, due: datetime, notes: str) -> None:
-            self._run_estimate(lambda: self.ctx.add_deadline(title, due, notes))
+            self.start_estimate(self.ctx.create_deadline(title, due, notes))
 
         return DeadlineModal(self.centralWidget(), self.ctx.clock.now(), save)
 
     def edit_deadline(self, d: Deadline) -> DeadlineModal:
         def save(title: str, due: datetime, notes: str) -> None:
-            self._run_estimate(lambda: self.ctx.edit_deadline(d.id, title, due, notes))
+            if self.ctx.update_deadline(d.id, title, due, notes):
+                self.start_estimate(d.id)
+            else:
+                self.refresh(force=True)
+                self.toast("Deadline saved")
 
         return DeadlineModal(self.centralWidget(), self.ctx.clock.now(), save, d)
 
@@ -666,6 +824,7 @@ class MainWindow(QMainWindow):
         def confirm() -> None:
             self.ctx.delete_deadline(d.id)
             self.refresh(force=True)
+            self.toast(f"Deleted “{d.title}”")
 
         return ConfirmModal(
             self.centralWidget(),
@@ -699,14 +858,14 @@ class MainWindow(QMainWindow):
             max_gaming_minutes=self.max_minutes.value(),
         )
         self.ctx.save_settings(style, self.tags.text().split(","))
-        self.statusBar().showMessage("Settings saved", 2500)
+        self.toast("Settings saved", "ok")
         self.refresh(force=True)
 
     # Claude account
 
     def _backend_changed(self) -> None:
         self.ctx.set_backend(self.backend_box.currentData())
-        self.statusBar().showMessage(f"Estimates now use: {self.backend_box.currentText()}", 3000)
+        self.toast(f"Estimates now use: {self.backend_box.currentText()}")
 
     def check_claude(self) -> None:
         """Ask the CLI for login status (plus a tiny test call) off the GUI thread."""
@@ -722,7 +881,7 @@ class MainWindow(QMainWindow):
             self._show_claude(status)
             if status.ok and self.login_timer.isActive():
                 self.login_timer.stop()
-                self.statusBar().showMessage("Logged in to Claude", 4000)
+                self.toast("Logged in to Claude", "ok")
         else:  # Job returns a list of error strings on failure
             self._show_claude(AccountStatus(installed=True, message="; ".join(status)))
 

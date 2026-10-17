@@ -79,3 +79,35 @@ def test_claude_button_reflects_status(qapp, tmp_path):
     assert w.claude_btn.text() == "Log in to Claude" and "Session expired" in w.claude_status.text()
     w._show_claude(AccountStatus(installed=False))
     assert not w.claude_btn.isEnabled()
+
+
+def test_new_deadline_shows_pending_then_estimates(qapp, tmp_path):
+    import time
+
+    from gameline.llm.stub import StubLLM
+
+    ctx = AppContext(Store(tmp_path / "s.json"), llm=StubLLM())
+    w = MainWindow(ctx, lambda: [])
+    did = ctx.create_deadline("MATA31 midterm", datetime(2030, 1, 10, 9))
+    w.start_estimate(did)
+    assert did in w.pending
+    deadline = time.time() + 5
+    while w.pending and time.time() < deadline:
+        qapp.processEvents()
+        time.sleep(0.01)
+    assert not w.pending
+    assert ctx.store.load().get(did).estimate.effort_hours == 8
+    assert w.toaster.toasts  # "Estimated …" toast is showing
+
+
+def test_toast_auto_dismisses(qapp, tmp_path):
+    import time
+
+    w = MainWindow(AppContext(Store(tmp_path / "s.json")), lambda: [])
+    w.toast("Hello", ms=50)
+    assert len(w.toaster.toasts) == 1
+    end = time.time() + 2
+    while w.toaster.toasts and time.time() < end:
+        qapp.processEvents()
+        time.sleep(0.01)
+    assert w.toaster.toasts == []

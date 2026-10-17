@@ -87,6 +87,11 @@ def stylesheet() -> str:
     QFrame#modal {{ background: {c['card']}; border: 1px solid {c['line']}; border-radius: 14px; }}
     QPushButton#claudeAccount[tone="ok"] {{ background: {c['ok_bg']}; color: {c['ok']}; }}
     QPushButton#claudeAccount[tone="idle"] {{ background: {c['line']}; color: {c['muted']}; }}
+    QFrame#toast {{ background: {c['card']}; border: 1px solid {c['line']}; border-left: 3px solid {c['accent']};
+                    border-radius: 10px; }}
+    QFrame#toast[tone="ok"] {{ border-left-color: {c['ok']}; }}
+    QFrame#toast[tone="error"] {{ border-left-color: {c['risk']}; }}
+    QLabel[pill="idle"] {{ background: {c['line']}; color: {c['muted']}; border-radius: 10px; padding: 2px 10px; font-weight: 600; }}
     QLabel#warning {{ color: {c['risk']}; font-size: 12px; }}
     QPushButton[danger="true"] {{ background: {c['risk']}; }}
     QLabel#modalTitle {{ font-size: 18px; font-weight: 700; }}

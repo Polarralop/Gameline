@@ -34,3 +34,19 @@ def test_save_settings(tmp_path):
     ctx.save_settings(WorkingStyle(style=Style.LONG_SESSIONS, max_gaming_minutes=90), ["Minecraft", " ", "Hades"])
     s = ctx.store.load()
     assert s.working_style.max_gaming_minutes == 90 and s.tagged_games == ["Minecraft", "Hades"]
+
+
+def test_estimate_does_not_overwrite_edits_made_meanwhile(tmp_path):
+    class SlowEditLLM(StubLLM):
+        def complete_json(self, system, prompt, schema):
+            # Simulate the user editing the deadline while the AI is thinking.
+            s = ctx.store.load()
+            s.deadlines[0].notes = "changed"
+            ctx.store.save(s)
+            return super().complete_json(system, prompt, schema)
+
+    ctx = AppContext(Store(tmp_path / "s.json"), llm=SlowEditLLM())
+    did = ctx.create_deadline("Essay", datetime(2030, 1, 10))
+    ctx.estimate_deadline(did)
+    d = ctx.store.load().get(did)
+    assert d.notes == "changed" and d.estimate is None  # stale estimate discarded

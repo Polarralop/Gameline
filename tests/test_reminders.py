@@ -48,7 +48,7 @@ def test_long_session_alert_then_cooldown(tmp_path):
     clock.advance(minutes=10)
     r.on_tick([s], clock.now())  # inside cooldown
     assert len(sent) == 1
-    clock.advance(minutes=25)
+    clock.advance(minutes=55)
     r.on_tick([s], clock.now())
     assert len(sent) == 2
 

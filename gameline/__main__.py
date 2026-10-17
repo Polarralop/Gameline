@@ -1,21 +1,33 @@
-"""Temporary entry point: print detected games every 5 seconds.
+"""Entry point: python -m gameline starts the menu bar app.
 
-Will become the menu bar app (rumps) with the watcher on a worker thread.
+python -m gameline --detect prints detected games every 5 seconds instead,
+which is handy for checking detectors without the UI.
 """
 
+import logging
+import sys
 import time
 
-from .demo.fake_game import FAKE_GAME_NAME
-from .detectors import default_detectors, get_running_games
+
+def detect_loop() -> None:
+    from .context import AppContext
+    from .detectors import get_running_games
+
+    ctx = AppContext()
+    while True:
+        games = get_running_games(ctx.detectors())
+        print(time.strftime("%H:%M:%S"), [g.name for g in games] or "no games")
+        time.sleep(5)
 
 
 def main() -> None:
-    detectors = default_detectors(tagged_names=[FAKE_GAME_NAME])
-    print("Detectors:", ", ".join(d.name for d in detectors))
-    while True:
-        games = get_running_games(detectors)
-        print(time.strftime("%H:%M:%S"), [g.name for g in games] or "no games")
-        time.sleep(5)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
+    if "--detect" in sys.argv:
+        detect_loop()
+    else:
+        from .tray import run
+
+        run()
 
 
 if __name__ == "__main__":

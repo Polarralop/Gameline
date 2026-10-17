@@ -46,6 +46,7 @@ def _send_osascript(title: str, message: str) -> None:
 
 def notify(title: str, message: str) -> str:
     """Show a notification. Returns which backend delivered it."""
+    log.info("Notify: %s | %s", title, message.replace("\n", " / "))
     try:
         asyncio.run(_send_native(title, message))
         return "native"

@@ -20,7 +20,7 @@ from .watcher import Listener, Session
 
 log = logging.getLogger(__name__)
 
-REPEAT_MINUTES = 30
+REPEAT_MINUTES = 60
 MIN_LIMIT_MINUTES = 30
 # Prep hours due in the next 48h at which the session limit is halved.
 HEAVY_PREP_HOURS = 8.0

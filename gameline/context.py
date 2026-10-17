@@ -1,0 +1,117 @@
+"""Shared app objects that the menu bar, the watcher and the dashboard all use."""
+
+from __future__ import annotations
+
+import logging
+import subprocess
+import threading
+from datetime import datetime, timedelta
+
+from .clock import Clock
+from .demo.fake_game import FAKE_GAME_NAME, build
+from .detectors import GameDetector, default_detectors
+from .estimator import estimate_pending
+from .llm import get_llm
+from .models import Chunk, Deadline, Estimate, Style, WorkingStyle
+from .planner import at_risk_deadlines
+from .store import State, Store
+
+log = logging.getLogger(__name__)
+
+DEMO_SPEED = 360.0  # 1 real second = 6 app minutes
+
+
+class AppContext:
+    def __init__(self, store: Store | None = None) -> None:
+        self.store = store or Store()
+        self.clock = Clock()
+        self._llm = None
+        self._fake_game: subprocess.Popen | None = None
+        self._lock = threading.Lock()
+
+    # Detectors are rebuilt each poll so newly tagged games apply immediately.
+    def detectors(self) -> list[GameDetector]:
+        tagged = self.store.load().tagged_games + [FAKE_GAME_NAME]
+        return default_detectors(tagged_names=tagged)
+
+    @property
+    def llm(self):
+        if self._llm is None:
+            self._llm = get_llm()
+        return self._llm
+
+    def save_and_estimate(self, state: State) -> list[str]:
+        """Persist, then estimate any new or edited deadlines. Returns error messages."""
+        errors = []
+        try:
+            estimate_pending(state, self.llm, self.clock.now())
+        except Exception as exc:
+            log.exception("Estimation failed")
+            errors.append(f"Estimate failed ({exc.__class__.__name__}); will retry on next save.")
+        self.store.save(state)
+        return errors
+
+    def status_line(self) -> str:
+        state = self.store.load()
+        risky = at_risk_deadlines(state.deadlines, state.working_style, self.clock.now())
+        if not risky:
+            return "On track"
+        return f"{len(risky)} deadline{'s' if len(risky) > 1 else ''} at risk"
+
+    # --- demo mode -----------------------------------------------------------
+
+    @property
+    def demo_mode(self) -> bool:
+        return self.clock.speed > 1
+
+    def set_demo_mode(self, on: bool) -> None:
+        self.clock.set_speed(DEMO_SPEED if on else 1.0)
+
+    @property
+    def fake_game_running(self) -> bool:
+        return self._fake_game is not None and self._fake_game.poll() is None
+
+    def start_fake_game(self) -> None:
+        with self._lock:
+            if not self.fake_game_running:
+                self._fake_game = subprocess.Popen([str(build())])
+
+    def stop_fake_game(self) -> None:
+        with self._lock:
+            if self.fake_game_running:
+                self._fake_game.terminate()
+                self._fake_game.wait(timeout=5)
+            self._fake_game = None
+
+    def seed_demo_data(self) -> None:
+        """Replace state with a believable student week: one deadline at risk, one fine."""
+        now = self.clock.now().replace(second=0, microsecond=0)
+
+        def chunks(spec):
+            return [Chunk(t, h, start=now + timedelta(hours=off)) for t, h, off in spec]
+
+        a2 = Deadline("CSCA48 Assignment 2", now + timedelta(days=1, hours=2), "Linked lists and recursion, 4 questions")
+        a2.estimate = Estimate(
+            effort_hours=9,
+            importance=4,
+            rationale="Four coding questions plus debugging; padded 20%.",
+            chunks=chunks([("Q1 + Q2", 3, 0.5), ("Q3 recursion", 3, 18), ("Q4 + tests", 3, 22)]),
+        )
+        essay = Deadline("WSTC02 reflection essay", now + timedelta(days=6), "1000 words")
+        essay.estimate = Estimate(
+            effort_hours=4,
+            importance=2,
+            rationale="Short reflective piece.",
+            chunks=chunks([("Outline", 1, 48), ("Draft", 2, 72), ("Edit", 1, 96)]),
+        )
+        for d in (a2, essay):
+            d.estimated_from = d.fingerprint()
+        state = self.store.load()
+        state.deadlines = [a2, essay]
+        state.working_style = WorkingStyle(style=Style.SHORT_BURSTS, daily_work_hours=4, max_gaming_minutes=120)
+        self.store.save(state)
+
+
+def parse_local_datetime(value: str) -> datetime:
+    """HTML datetime-local inputs send 'YYYY-MM-DDTHH:MM'."""
+    return datetime.fromisoformat(value)

@@ -10,8 +10,10 @@ Qt patterns used here:
 from __future__ import annotations
 
 import sys
+import tempfile
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 
 from PySide6.QtCore import (
     QDateTime,
@@ -754,6 +756,20 @@ class GameList(QWidget):
 
 # --- sidebar -----------------------------------------------------------------
 
+ICONS_DIR = Path(__file__).resolve().parents[2] / "assets" / "icons"
+
+
+def nav_icon(name: str) -> QIcon:
+    """Sidebar icon from assets/icons, muted normally and ink when checked.
+    The SVGs draw in currentColor, so we write a colored copy per theme color."""
+    icon = QIcon()
+    c = colors()
+    for color, state in ((c["muted"], QIcon.State.Off), (c["ink"], QIcon.State.On)):
+        path = Path(tempfile.gettempdir()) / f"gameline-nav-{name}-{color.lstrip('#')}.svg"
+        path.write_text((ICONS_DIR / f"{name}.svg").read_text().replace("currentColor", color))
+        icon.addFile(path.as_posix(), QSize(18, 18), QIcon.Mode.Normal, state)
+    return icon
+
 
 class Sidebar(QFrame):
     """Navigation rail that collapses to icons only. Width changes are animated."""
@@ -810,6 +826,8 @@ class Sidebar(QFrame):
         btn.setObjectName("navItem")
         btn.setCheckable(True)
         btn.setToolTip(text)
+        btn.setIcon(nav_icon(icon))
+        btn.setIconSize(QSize(18, 18))
         index = len(self.items)
         btn.clicked.connect(lambda: self.select(index))
         self.items.append((btn, icon, text))
@@ -844,8 +862,8 @@ class Sidebar(QFrame):
         self.brand_fx.setOpacity(max(0.0, min(1.0, (width - self.COLLAPSED) / span)) ** 2)
 
     def _apply_labels(self) -> None:
-        for btn, icon, text in self.items:
-            btn.setText(f"{icon}   {text}" if self.expanded else icon)
+        for btn, _, text in self.items:
+            btn.setText(f"  {text}" if self.expanded else "")
 
 
 # --- main window -------------------------------------------------------------
@@ -875,9 +893,9 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.sidebar = Sidebar(self._go_to)
         for icon, text, widget, bottom in (
-            ("📋", "Deadlines", self._deadlines_tab(), False),
-            ("🎬", "Demo", self._demo_tab(), False),
-            ("⚙️", "Preferences", self._settings_tab(), True),
+            ("calendar", "Deadlines", self._deadlines_tab(), False),
+            ("demo", "Demo", self._demo_tab(), False),
+            ("gear", "Preferences", self._settings_tab(), True),
         ):
             self.stack.addWidget(widget)
             self.sidebar.add_item(icon, text, bottom=bottom)

@@ -18,7 +18,7 @@ from ..notify import notify
 from ..reminders import Reminders
 from ..watcher import Watcher
 from .theme import palette, stylesheet
-from .window import MainWindow
+from .window import ICONS_DIR, MainWindow
 
 
 def make_icon(at_risk: bool) -> QIcon:
@@ -124,6 +124,7 @@ class GamelineApp:
 def run() -> None:
     qapp = QApplication(sys.argv)
     qapp.setApplicationName("Gameline")
+    qapp.setWindowIcon(QIcon(str(ICONS_DIR / "logo.svg")))  # Dock and app switcher
     qapp.setQuitOnLastWindowClosed(False)  # live on in the menu bar
     # Fusion renders stylesheets the same on every OS, unlike the native Mac style.
     qapp.setStyle("Fusion")

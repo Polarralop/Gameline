@@ -57,7 +57,7 @@ def test_sidebar_switches_pages_and_collapses(qapp, tmp_path):
     w.sidebar.toggle()
     w.sidebar.anim.setCurrentTime(w.sidebar.anim.duration())
     assert w.sidebar.maximumWidth() == w.sidebar.COLLAPSED
-    assert w.sidebar.items[0][0].text() == "📋"
+    assert w.sidebar.items[0][0].text() == "" and not w.sidebar.items[0][0].icon().isNull()
 
 
 def test_delete_asks_in_modal_then_deletes(qapp, tmp_path):

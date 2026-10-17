@@ -29,9 +29,10 @@ from PySide6.QtCore import (
     Qt,
     QThreadPool,
     QTimer,
+    QUrl,
     Signal,
 )
-from PySide6.QtGui import QColor, QIcon, QKeySequence, QPainter, QPen, QShortcut, QTextCharFormat
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QKeySequence, QPainter, QPen, QShortcut, QTextCharFormat
 from PySide6.QtWidgets import (
     QCalendarWidget,
     QCheckBox,
@@ -65,6 +66,7 @@ from ..llm import available_backends, subscription_enabled
 from ..llm.claude_cli import AccountStatus, account_status, cached_status, forget_status, open_login_terminal
 from ..llm.claude_cli import logout as claude_logout
 from ..models import Deadline, NotifyLevel, Style, WorkingStyle, subject_of
+from .. import keys
 from ..paths import icons_dir
 from ..planner import DeadlineStatus, assess
 from .theme import colors, dropdown_list_qss, icon_path
@@ -130,6 +132,74 @@ class _DropdownRowDelegate(QStyledItemDelegate):
     def sizeHint(self, option, index):
         size = super().sizeHint(option, index)
         return QSize(size.width(), 32)
+
+
+class ApiKeyField(QWidget):
+    """Paste-in API key for the selected backend (Gemini or Claude API).
+    Hidden for options that don't need a key."""
+
+    NAMES = {"gemini": "Gemini", "claude": "Claude"}
+
+    def __init__(self, on_saved: Callable[[str], None], width: int = 320) -> None:
+        super().__init__()
+        self.on_saved = on_saved
+        self.backend = ""
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(6)
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.input = QLineEdit()
+        self.input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.input.setFixedHeight(36)
+        self.input.returnPressed.connect(self._save)
+        save = QPushButton("Save")
+        save.setFixedSize(64, 36)
+        save.clicked.connect(self._save)
+        row.addWidget(self.input, 1)
+        row.addWidget(save)
+        lay.addLayout(row)
+        info = QHBoxLayout()
+        info.setSpacing(8)
+        self.status = label("", muted=True)
+        info.addWidget(self.status)
+        self.get_link = QPushButton("Get a key")
+        self.get_link.setObjectName("linkButton")
+        self.get_link.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.get_link.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(keys.KEY_URLS[self.backend])))
+        info.addWidget(self.get_link)
+        info.addStretch(1)
+        lay.addLayout(info)
+        self.setFixedWidth(width)
+
+    def set_backend(self, backend: str) -> None:
+        self.backend = backend
+        self.setVisible(keys.needs_key(backend))
+        if keys.needs_key(backend):
+            self.input.clear()
+            self.input.setPlaceholderText(f"Paste your {self.NAMES[backend]} API key")
+            self._show_status()
+
+    def has_key(self) -> bool:
+        return bool(keys.get_key(self.backend))
+
+    def _show_status(self) -> None:
+        saved = keys.masked(self.backend)
+        self.status.setText(saved or "No key yet")
+        self.status.setObjectName("" if saved else "warning")
+        self.status.setProperty("muted", bool(saved))
+        self.status.style().unpolish(self.status)
+        self.status.style().polish(self.status)
+
+    def _save(self) -> None:
+        value = self.input.text().strip()
+        if not value:
+            self.input.setFocus()
+            return
+        keys.save_key(self.backend, value)
+        self.input.clear()
+        self._show_status()
+        self.on_saved(self.backend)
 
 
 class HelpBadge(QWidget):
@@ -1383,6 +1453,8 @@ class MainWindow(QMainWindow):
             self.backend_box.addItem(text, key)
         self.backend_box.currentIndexChanged.connect(self._backend_changed)
         form.addRow("Estimate with", self.backend_box)
+        self.key_field = ApiKeyField(self._key_saved)
+        form.addRow("API key", self.key_field)
 
         self.claude_btn = QPushButton("Checking Claude…")
         self.claude_btn.setObjectName("claudeAccount")
@@ -1857,6 +1929,8 @@ class MainWindow(QMainWindow):
                             "This can't be reversed!", "Delete", wipe)
 
     def _load_settings(self) -> None:
+        if hasattr(self, "key_field"):
+            self._show_key_field()
         state = self.ctx.store.load()
         ws = state.working_style
         self.style_box.setCurrentIndex(self.style_box.findData(ws.style))
@@ -1944,7 +2018,18 @@ class MainWindow(QMainWindow):
     def _backend_changed(self) -> None:
         self.ctx.set_backend(self.backend_box.currentData())
         self.toast(f"Estimates now use: {self.backend_box.currentText()}")
+        self._show_key_field()
         self._claude_for_backend()
+
+    def _show_key_field(self) -> None:
+        backend = self.ctx.backend_name()
+        self.key_field.set_backend(backend)
+        form = self._settings_form
+        form.setRowVisible(self.key_field, keys.needs_key(backend))
+
+    def _key_saved(self, backend: str) -> None:
+        self.ctx.reset_llm()
+        self.toast(f"{ApiKeyField.NAMES[backend]} API key saved", "ok")
 
     def _claude_for_backend(self) -> None:
         """Only look at the Claude login when the subscription backend is in

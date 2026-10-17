@@ -383,3 +383,24 @@ def test_subscription_hidden_by_default(qapp, tmp_path, monkeypatch):
     assert w.backend_box.findData("claude-cli") == -1
     assert not w.claude_btn.isVisibleTo(w)
     assert ctx.backend_name() != "claude-cli"  # falls back to an offered option
+
+
+def test_onboarding_warns_without_api_key(qapp, tmp_path, monkeypatch):
+    from gameline.ui.window import ConfirmModal
+
+    monkeypatch.setenv("GAMELINE_DATA", str(tmp_path))
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    ctx = AppContext(Store(tmp_path / "s.json"))
+    w = MainWindow(ctx, lambda: [])
+    m = w.show_onboarding()
+    m.go(4)
+    m.ai_box.setCurrentIndex(m.ai_box.findData("gemini"))
+    assert m.key_field.isVisibleTo(m) and m.key_field.status.text() == "No key yet"
+    m.next_btn.click()
+    assert m.pages.currentIndex() == 4  # asks before continuing without a key
+    m.key_field.input.setText("AIzaTEST9876wxyz")
+    m.key_field._save()
+    assert m.key_field.status.text() == "Saved key ending in wxyz"
+    w.centralWidget().findChildren(ConfirmModal)[-1].close_modal()
+    m.next_btn.click()
+    assert m.pages.currentIndex() == 5

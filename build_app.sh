@@ -10,11 +10,21 @@ cd "$(dirname "$0")"
 # so the app sees the same deadlines as ./run.sh.
 .venv/bin/python -c "from gameline.paths import migrate_legacy_data as m; [print('Moved', p) for p in m()]"
 # The repo's .env is the one you edit; the full app can only read the copy in
-# the data folder, so refresh that copy on every build.
+# the data folder, so merge it into that copy on every build (keys pasted into
+# the app itself are kept unless the repo .env sets the same key).
 if [ -f .env ]; then
-  cp .env "$HOME/Library/Application Support/Gameline/.env"
+  .venv/bin/python - <<'PY'
+from dotenv import dotenv_values, set_key
+from gameline.paths import data_dir
+target = data_dir() / ".env"
+target.touch(exist_ok=True)
+for key, value in dotenv_values(".env").items():
+    if value is not None:
+        set_key(str(target), key, value, quote_mode="never")
+PY
 fi
 .venv/bin/python packaging/make_icon.py  # compiles packaging/AppIcon.icon (needs Xcode)
+packaging/build_demo_game.sh >/dev/null   # prebuilt demo game shipped inside the app
 rm -rf build dist
 if [ "$1" = "--alias" ]; then
   .venv/bin/python setup.py -q py2app -A
@@ -33,6 +43,15 @@ if [ "$1" = "--alias" ]; then
   "$LSREGISTER" -f dist/Gameline.app || true
   echo "Built dist/Gameline.app (alias). Open it with: open dist/Gameline.app"
 else
+  # Shareable copies: a drag-to-Applications disk image and a zip.
+  stage=$(mktemp -d)
+  ditto dist/Gameline.app "$stage/Gameline.app"
+  ln -s /Applications "$stage/Applications"
+  cp packaging/OPEN_ME_FIRST.txt "$stage/Open me first.txt"
+  hdiutil create -quiet -volname Gameline -srcfolder "$stage" -ov -format UDZO dist/Gameline.dmg
+  rm -rf "$stage"
+  ditto -c -k --keepParent dist/Gameline.app dist/Gameline.zip
+  echo "Made dist/Gameline.dmg and dist/Gameline.zip for sharing"
   # Install outside ~/Documents: macOS asks for Documents access whenever an
   # app stored there reads its own files.
   osascript -e 'quit app "Gameline"' >/dev/null 2>&1 || true

@@ -14,7 +14,7 @@ A desktop app that tracks your deadlines, notices when you launch a PC game, and
 
 ## AI options
 
-Pick in **Preferences → AI estimates** (or onboarding). Keys go in `.env` (see `.env.example`).
+Pick in **Preferences → AI estimates** (or onboarding) and paste your API key there. It's saved in the data folder's `.env`. From source you can also put keys in the repo `.env` (see `.env.example`).
 
 | Option | Model | Needs |
 |---|---|---|
@@ -46,6 +46,12 @@ open -a Gameline
 - The app icon is compiled from `packaging/AppIcon.icon` with Xcode's `actool`, so macOS 26 applies its own shape. Building needs Xcode.
 - Each build copies your repo `.env` into the data folder (below) so the app has your keys.
 - The first notification asks to allow "Gameline". For Gaming Focus, add Gameline under Allowed Apps.
+
+### Sharing it
+
+The full build also writes `dist/Gameline.dmg` (drag to Applications, with an "Open me first" note) and `dist/Gameline.zip`. Everything is inside the app: Python, Qt, the libraries and a prebuilt demo game, so users need nothing else. They paste their own Gemini or Claude API key during onboarding or in Preferences.
+
+The build isn't signed with an Apple Developer ID, so on first open macOS blocks it. Users click **Open Anyway** under System Settings → Privacy & Security once (or run `xattr -dr com.apple.quarantine /Applications/Gameline.app`). Requires an Apple Silicon Mac on macOS 13 or later.
 
 ## Where data lives
 

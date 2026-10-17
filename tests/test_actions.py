@@ -112,3 +112,18 @@ def test_data_dir_per_platform(monkeypatch, tmp_path):
     monkeypatch.setattr(paths.sys, "platform", "linux")
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     assert paths.data_dir() == tmp_path / ".local/share/gameline"
+
+
+def test_api_key_save_and_mask(tmp_path, monkeypatch):
+    from gameline import keys
+
+    monkeypatch.setenv("GAMELINE_DATA", str(tmp_path))
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert keys.masked("gemini") == ""
+    keys.save_key("gemini", "  AIzaTEST1234abcd ")
+    assert keys.get_key("gemini") == "AIzaTEST1234abcd"
+    assert keys.masked("gemini") == "Saved key ending in abcd"
+    assert "GEMINI_API_KEY=AIzaTEST1234abcd" in (tmp_path / ".env").read_text()
+    keys.save_key("gemini", "")
+    assert keys.get_key("gemini") == "" and "GEMINI_API_KEY" not in (tmp_path / ".env").read_text()
+    assert not keys.needs_key("stub")

@@ -1,0 +1,23 @@
+Installing Gameline
+===================
+
+1. Drag Gameline into the Applications folder.
+2. Open Applications and double-click Gameline.
+
+macOS will say Gameline "can't be opened" or "is from an unidentified developer",
+because this hackathon build isn't signed with an Apple Developer ID. To open it:
+
+3. Click Done (or OK) on that message.
+4. Open System Settings > Privacy & Security, scroll down, and click "Open Anyway"
+   next to the message about Gameline. Confirm with your password.
+
+You only need to do this once. If macOS instead says Gameline "is damaged",
+open Terminal and run:
+
+    xattr -dr com.apple.quarantine /Applications/Gameline.app
+
+then open Gameline again.
+
+Gameline needs an Apple Silicon Mac (M1 or later) running macOS 13 or newer.
+On first launch it walks you through setup; paste a Gemini or Claude API key
+when it asks which AI should plan your deadlines.

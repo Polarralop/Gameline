@@ -12,6 +12,8 @@ DATA_FILES = [
     # Compiled app icon (see packaging/make_icon.py): macOS 26 reads Assets.car,
     # older versions fall back to AppIcon.icns.
     ("", ["packaging/icon-build/Assets.car"]),
+    # Prebuilt demo "game" (packaging/build_demo_game.sh), so users don't need Xcode tools.
+    ("demo", ["packaging/icon-build/GamelineDemoGame"]),
     ("assets/icons", [
     "assets/icons/calendar.svg", "assets/icons/chart.svg", "assets/icons/demo.svg", "assets/icons/gear.svg",
     "assets/icons/logo.svg", "assets/icons/logo-ok.svg", "assets/icons/logo-risk.svg",

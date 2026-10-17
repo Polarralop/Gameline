@@ -26,7 +26,8 @@ from PySide6.QtWidgets import (
 from ..llm import available_backends
 from ..llm.claude_cli import AccountStatus, account_status, cached_status, forget_status, open_login_terminal
 from ..models import NotifyLevel, Style, WorkingStyle
-from .window import ICONS_DIR, ConfirmModal, GameList, Job, Modal, label, styled_combo
+from ..keys import needs_key
+from .window import ICONS_DIR, ApiKeyField, ConfirmModal, GameList, Job, Modal, label, styled_combo
 
 QUIZ_PAGES = 4  # pages 1-4 are questions, with a dot each
 DONE = QUIZ_PAGES + 1
@@ -290,6 +291,8 @@ class OnboardingModal(Modal):
         lay.addWidget(self.ai_box)
         self.ai_hint = label("", muted=True, wrap=True)
         lay.addWidget(self.ai_hint)
+        self.key_field = ApiKeyField(lambda backend: self.ctx.reset_llm(), width=472)
+        lay.addWidget(self.key_field)
 
         # Claude subscription only: log in right here, like in Preferences.
         self.login_row = QWidget()
@@ -316,9 +319,10 @@ class OnboardingModal(Modal):
 
     def _ai_changed(self) -> None:
         key = self.ai_box.currentData()
+        self.key_field.set_backend(key)
         self.ai_hint.setText({
-            "gemini": "Uses the Gemini API key from your .env file.",
-            "claude": "Uses the Claude API key from your .env file.",
+            "gemini": "Paste a Gemini API key below. It's stored only on this computer.",
+            "claude": "Paste a Claude API key below. It's stored only on this computer.",
             "claude-cli": "Uses your Claude subscription through Claude Code on this computer. Just log in below.",
             "stub": "No AI: rough guesses from the deadline's title. Works offline.",
         }.get(key, ""))
@@ -471,6 +475,17 @@ class OnboardingModal(Modal):
                 )
                 return
         if index == QUIZ_PAGES:
+            if needs_key(self.ai_box.currentData()) and not self.key_field.has_key() and not self.skip_login_ok:
+                ConfirmModal(
+                    self.parent(),
+                    "Continue without an API key?",
+                    "Gameline needs a key to estimate deadlines with this AI. You can add one later in "
+                    "Preferences, or pick Offline for rough guesses.",
+                    "Estimates will fail until a key is added.",
+                    "Continue anyway",
+                    self._accept_no_login,
+                )
+                return
             if self.ai_box.currentData() == "claude-cli" and not (self.claude and self.claude.ok) \
                     and not self.skip_login_ok:
                 ConfirmModal(

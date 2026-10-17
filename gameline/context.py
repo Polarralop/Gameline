@@ -46,6 +46,11 @@ class AppContext:
             self._llm, self._llm_name = get_llm(name), name
         return self._llm
 
+    def reset_llm(self) -> None:
+        """Rebuild the backend on next use (e.g. after a new API key is saved)."""
+        self._llm = None
+        self._llm_name = None
+
     def backend_name(self) -> str:
         """The saved choice, unless it's no longer offered (the subscription
         option when hidden), then the default."""

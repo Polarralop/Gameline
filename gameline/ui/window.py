@@ -334,20 +334,23 @@ class Sidebar(QFrame):
         self.lay.setContentsMargins(10, 14, 10, 14)
         self.lay.setSpacing(4)
 
-        top = QHBoxLayout()
-        self.toggle_btn = QPushButton("☰")
+        # The top row is positioned by hand, not by a layout: a layout squeezes
+        # its children when the animating sidebar gets narrow, which pushed the
+        # brand into the toggle. Here both stay put and the sidebar edge clips.
+        top = QWidget()
+        top.setFixedSize(self.EXPANDED - 20, 34)
+        self.toggle_btn = QPushButton("☰", top)
         self.toggle_btn.setObjectName("navToggle")
         self.toggle_btn.setToolTip("Collapse sidebar")
         self.toggle_btn.clicked.connect(self.toggle)
-        # Fixed sizes: as the width animates, the sidebar clips or reveals the
-        # brand instead of the layout squeezing and reflowing it.
-        self.toggle_btn.setFixedSize(self.COLLAPSED - 20, 34)
-        top.addWidget(self.toggle_btn)
+        self.toggle_btn.setGeometry(0, 0, self.COLLAPSED - 20, 34)
         self.brand = label("Gameline", name="brand")
-        self.brand.setFixedWidth(self.brand.sizeHint().width() + 8)
-        top.addWidget(self.brand)
-        top.addStretch(1)
-        self.lay.addLayout(top)
+        self.brand.setParent(top)
+        self.brand.setGeometry(self.COLLAPSED - 12, 0, self.EXPANDED - self.COLLAPSED, 34)
+        # Fade the brand in step with the width instead of popping it in/out.
+        self.brand_fx = QGraphicsOpacityEffect(self.brand)
+        self.brand.setGraphicsEffect(self.brand_fx)
+        self.lay.addWidget(top, 0, Qt.AlignmentFlag.AlignLeft)
         self.lay.addSpacing(14)
         self.items_end = self.lay.count()
         self.lay.addStretch(1)
@@ -359,6 +362,7 @@ class Sidebar(QFrame):
             a.setEasingCurve(QEasingCurve.Type.OutCubic)
             self.anim.addAnimation(a)
         self.anim.finished.connect(lambda: None if self.expanded else self._apply_labels())
+        self.anim.animationAt(0).valueChanged.connect(self._fade_brand)
 
     def add_item(self, icon: str, text: str) -> None:
         btn = QPushButton()
@@ -390,9 +394,11 @@ class Sidebar(QFrame):
         self.anim.start()
         self.toggle_btn.setToolTip("Collapse sidebar" if self.expanded else "Expand sidebar")
 
+    def _fade_brand(self, width: int) -> None:
+        span = self.EXPANDED - self.COLLAPSED
+        self.brand_fx.setOpacity(max(0.0, min(1.0, (width - self.COLLAPSED) / span)) ** 2)
+
     def _apply_labels(self) -> None:
-        # Toggle and brand have fixed sizes, so hiding the brand never reflows the row.
-        self.brand.setVisible(self.expanded)
         for btn, icon, text in self.items:
             btn.setText(f"{icon}   {text}" if self.expanded else icon)
 

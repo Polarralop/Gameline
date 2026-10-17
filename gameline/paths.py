@@ -23,8 +23,10 @@ def data_dir() -> Path:
         path = Path(os.environ["GAMELINE_DATA"]).expanduser()
     elif sys.platform == "darwin":
         path = Path.home() / "Library" / "Application Support" / "Gameline"
-    else:
-        path = Path.home() / ".gameline"
+    elif sys.platform == "win32":
+        path = Path(os.getenv("APPDATA") or Path.home() / "AppData" / "Roaming") / "Gameline"
+    else:  # Linux and friends: the XDG data folder
+        path = Path(os.getenv("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "gameline"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

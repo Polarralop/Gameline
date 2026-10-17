@@ -97,3 +97,18 @@ def test_gemini_backend_is_registered():
     from gameline.llm import BACKENDS
 
     assert "gemini" in BACKENDS
+
+
+def test_data_dir_per_platform(monkeypatch, tmp_path):
+    from gameline import paths
+
+    monkeypatch.delenv("GAMELINE_DATA", raising=False)
+    monkeypatch.setattr(paths.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(paths.sys, "platform", "darwin")
+    assert paths.data_dir() == tmp_path / "Library/Application Support/Gameline"
+    monkeypatch.setattr(paths.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    assert paths.data_dir() == tmp_path / "Roaming/Gameline"
+    monkeypatch.setattr(paths.sys, "platform", "linux")
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    assert paths.data_dir() == tmp_path / ".local/share/gameline"

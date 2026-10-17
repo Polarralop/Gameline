@@ -171,7 +171,7 @@ def test_game_list_add_and_remove(qapp, tmp_path):
 
 def test_notifications_help_badge(qapp, tmp_path):
     w = MainWindow(AppContext(Store(tmp_path / "s.json")), lambda: [])
-    badge = next(l for l in w.findChildren(QtWidgets.QLabel) if l.objectName() == "help")
+    badge = next(l for l in w.findChildren(QtWidgets.QWidget) if l.objectName() == "help")
     for level in ("No notifications", "Standard", "Interrupting"):
         assert level in badge.toolTip()
 

@@ -23,6 +23,7 @@ from PySide6.QtCore import (
     QObject,
     QParallelAnimationGroup,
     QPropertyAnimation,
+    QRectF,
     QRunnable,
     QSize,
     Qt,
@@ -129,14 +130,46 @@ class _DropdownRowDelegate(QStyledItemDelegate):
         return QSize(size.width(), 32)
 
 
-def help_badge(text: str) -> QLabel:
-    """A small circled ? that explains a setting on hover."""
-    badge = QLabel("?")
-    badge.setObjectName("help")
-    badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    badge.setToolTip(f"<div style='width: 280px'>{text}</div>")
-    badge.setCursor(Qt.CursorShape.WhatsThisCursor)
-    return badge
+class HelpBadge(QWidget):
+    """A small circled ? that explains a setting on hover. Painted by hand so
+    the ? sits exactly in the middle (a styled QLabel nudges it off-centre)."""
+
+    SIZE = 18
+
+    def __init__(self, text: str) -> None:
+        super().__init__()
+        self.setFixedSize(self.SIZE, self.SIZE)
+        self.setToolTip(f"<div style='width: 280px'>{text}</div>")
+        self.setCursor(Qt.CursorShape.WhatsThisCursor)
+        self.setObjectName("help")
+        self.hovered = False
+
+    def enterEvent(self, event) -> None:
+        self.hovered = True
+        self.update()
+
+    def leaveEvent(self, event) -> None:
+        self.hovered = False
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        c = colors()
+        color = QColor(c["ink"] if self.hovered else c["muted"])
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(color, 1.5)
+        p.setPen(pen)
+        r = QRectF(self.rect()).adjusted(0.75, 0.75, -0.75, -0.75)
+        p.drawEllipse(r)
+        font = p.font()
+        font.setPixelSize(11)
+        font.setBold(True)
+        p.setFont(font)
+        p.drawText(r, Qt.AlignmentFlag.AlignCenter, "?")
+
+
+def help_badge(text: str) -> HelpBadge:
+    return HelpBadge(text)
 
 
 def styled_combo() -> QComboBox:

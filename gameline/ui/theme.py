@@ -167,9 +167,6 @@ def stylesheet() -> str:
     QFrame#proposal {{ border-radius: 8px; }}
     QFrame#proposal:hover {{ background: {c['bg']}; }}
     QToolTip {{ background: {c['card']}; color: {c['ink']}; border: 1px solid {c['line']}; padding: 8px; border-radius: 6px; }}
-    QLabel#help {{ color: {c['muted']}; border: 1.5px solid {c['muted']}; border-radius: 9px;
-        font-size: 11px; font-weight: 700; min-width: 15px; max-width: 15px; min-height: 15px; max-height: 15px; }}
-    QLabel#help:hover {{ color: {c['ink']}; border-color: {c['ink']}; }}
     QToolButton#collapse {{ background: transparent; border: 0; border-radius: 6px; padding: 4px; }}
     QToolButton#collapse:hover {{ background: {c['line']}; }}
     """

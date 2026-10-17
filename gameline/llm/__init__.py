@@ -13,4 +13,8 @@ def get_llm(name: str | None = None) -> EstimatorLLM:
         from .claude import ClaudeLLM
 
         return ClaudeLLM()
+    if name == "stub":
+        from .stub import StubLLM
+
+        return StubLLM()
     raise ValueError(f"Unknown LLM backend: {name!r}")

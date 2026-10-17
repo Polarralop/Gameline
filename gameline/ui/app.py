@@ -27,6 +27,31 @@ def make_icon(at_risk: bool) -> QIcon:
     return QIcon(str(ICONS_DIR / ("logo-risk.svg" if at_risk else "logo-ok.svg")))
 
 
+# Apple's icon grid: on a 1024 canvas the rounded tile is 824 wide (80.5%).
+# logo.svg's tile fills 120/128 of its own canvas, so draw the SVG at
+# 0.805 / 0.9375 of the icon and centre it. Shared with packaging/make_icns.py.
+DOCK_TILE, LOGO_TILE = 824 / 1024, 120 / 128
+
+
+def dock_icon() -> QIcon:
+    """The logo with the same margin as other Dock icons. Drawing the bare
+    SVG fills the whole slot, which made Gameline look bigger than its neighbours."""
+    from PySide6.QtCore import QRectF, Qt
+    from PySide6.QtGui import QImage, QPainter, QPixmap
+    from PySide6.QtSvg import QSvgRenderer
+
+    size = 1024
+    img = QImage(size, size, QImage.Format.Format_ARGB32)
+    img.fill(Qt.GlobalColor.transparent)
+    p = QPainter(img)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    drawn = size * DOCK_TILE / LOGO_TILE
+    inset = (size - drawn) / 2
+    QSvgRenderer(str(ICONS_DIR / "logo.svg")).render(p, QRectF(inset, inset, drawn, drawn))
+    p.end()
+    return QIcon(QPixmap.fromImage(img))
+
+
 class InterruptBridge(QObject):
     """Carries interrupting alerts from the watcher thread to the GUI thread.
     Emitting a Qt signal across threads queues the call onto the receiver's thread."""
@@ -113,7 +138,7 @@ class GamelineApp:
 def run() -> None:
     qapp = QApplication(sys.argv)
     qapp.setApplicationName("Gameline")
-    qapp.setWindowIcon(QIcon(str(ICONS_DIR / "logo.svg")))  # Dock and app switcher
+    qapp.setWindowIcon(dock_icon())  # Dock and app switcher
     qapp.setQuitOnLastWindowClosed(False)  # live on in the menu bar
     # Fusion renders stylesheets the same on every OS, unlike the native Mac style.
     qapp.setStyle("Fusion")

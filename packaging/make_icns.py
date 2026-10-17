@@ -13,13 +13,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def render(size: int) -> QImage:
-    """The logo already is a rounded tile; inset it to Apple's icon grid margin."""
+    """The logo already is a rounded tile; size it to Apple's icon grid
+    (tile = 824/1024 of the icon). Same maths as dock_icon() in gameline/ui/app.py."""
     img = QImage(size, size, QImage.Format.Format_ARGB32)
     img.fill(Qt.GlobalColor.transparent)
     p = QPainter(img)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    inset = size * 0.09
-    QSvgRenderer(str(ROOT / "assets/icons/logo.svg")).render(p, QRectF(inset, inset, size - 2 * inset, size - 2 * inset))
+    drawn = size * (824 / 1024) / (120 / 128)
+    inset = (size - drawn) / 2
+    QSvgRenderer(str(ROOT / "assets/icons/logo.svg")).render(p, QRectF(inset, inset, drawn, drawn))
     p.end()
     return img
 
